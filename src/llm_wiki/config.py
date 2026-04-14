@@ -18,6 +18,7 @@ class WikiSettings(BaseSettings):
 
     query_top_k: int = Field(default=5, alias="QUERY_TOP_K", ge=1, le=20)
     max_source_chars: int = Field(default=50_000, alias="MAX_SOURCE_CHARS")
+    max_page_tokens: int = Field(default=6_000, alias="MAX_PAGE_TOKENS")
 
 
 class WikiPaths:

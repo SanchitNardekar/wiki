@@ -59,6 +59,30 @@ def _check_missing_provenance(repo: WikiRepository, issues: list[LintIssue]) -> 
             issues.append(LintIssue(kind=LintIssueKind.MISSING_PROVENANCE, slug=slug, detail=f"Page '{slug}.md' has no sources"))
 
 
+def _heading_to_slug(heading: str) -> str:
+    slug = re.sub(r"[^a-z0-9\s]", "", heading.lower())
+    return re.sub(r"\s+", "_", slug.strip())
+
+
+def _check_page_size(
+    repo: WikiRepository, max_tokens: int, issues: list[LintIssue],
+) -> None:
+    for slug in repo.list_slugs():
+        page = repo.read(slug)
+        if page is None:
+            continue
+        token_est = len(page.full_text) // 4
+        if token_est <= max_tokens:
+            continue
+        headings = re.findall(r"^## (.+)$", page.body, re.MULTILINE)
+        if not headings:
+            detail = f"~{token_est} tokens exceeds {max_tokens} limit, but no ## headings to suggest splits"
+        else:
+            suggested = [_heading_to_slug(h) for h in headings]
+            detail = f"~{token_est} tokens exceeds {max_tokens} limit. Suggested splits: {', '.join(suggested)}"
+        issues.append(LintIssue(kind=LintIssueKind.PAGE_TOO_LARGE, slug=slug, detail=detail))
+
+
 def _check_contradictions(
     repo: WikiRepository, openai_client: OpenAI, model: str, issues: list[LintIssue],
 ) -> None:
@@ -87,6 +111,7 @@ def run_lint(
     deep: bool = False,
     openai_client: OpenAI | None = None,
     model: str = "gpt-5.2",
+    max_tokens: int = 8_000,
 ) -> LintResult:
     schema = repo.load_schema()
     schema_slugs = schema.slug_set()
@@ -98,6 +123,7 @@ def run_lint(
     _check_broken_xrefs(repo, all_existing, issues)
     _check_stale_embeddings(repo, index, issues)
     _check_missing_provenance(repo, issues)
+    _check_page_size(repo, max_tokens, issues)
 
     if deep and openai_client is not None:
         _check_contradictions(repo, openai_client, model, issues)

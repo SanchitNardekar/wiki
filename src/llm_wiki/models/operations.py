@@ -65,6 +65,7 @@ class LintIssueKind(StrEnum):
     STALE_EMBEDDING = "stale_embedding"
     MISSING_PROVENANCE = "missing_provenance"
     CONTRADICTION = "contradiction"
+    PAGE_TOO_LARGE = "page_too_large"
 
 
 class LintIssue(BaseModel):

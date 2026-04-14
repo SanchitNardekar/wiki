@@ -80,3 +80,32 @@ class TestRunLint:
 
         result = run_lint(repo=repo, index=index, deep=False)
         assert any("does_not_exist" in i.detail for i in result.issues_of_kind(LintIssueKind.BROKEN_XREF))
+
+    def test_large_page_with_headings_flagged(self, tmp_wiki_dir: Path) -> None:
+        from llm_wiki.index import EmbeddingIndex
+        from llm_wiki.lint import run_lint
+        from llm_wiki.wiki import WikiRepository
+
+        repo = WikiRepository(tmp_wiki_dir / "wiki")
+        index = EmbeddingIndex(tmp_wiki_dir / "wiki" / ".meta" / "embeddings.json")
+
+        big_body = "## Collaborative Filtering\n\n" + ("x " * 15_000) + "\n\n## Content Based\n\n" + ("y " * 15_000)
+        repo.write(slug="topic_a", title="Topic A", body=big_body, sources=["s.md"], tags=[])
+
+        result = run_lint(repo=repo, index=index, max_tokens=6_000)
+        large = result.issues_of_kind(LintIssueKind.PAGE_TOO_LARGE)
+        assert len(large) == 1
+        assert "collaborative_filtering" in large[0].detail
+        assert "content_based" in large[0].detail
+
+    def test_small_page_not_flagged_for_size(self, tmp_wiki_dir: Path) -> None:
+        from llm_wiki.index import EmbeddingIndex
+        from llm_wiki.lint import run_lint
+        from llm_wiki.wiki import WikiRepository
+
+        repo = WikiRepository(tmp_wiki_dir / "wiki")
+        index = EmbeddingIndex(tmp_wiki_dir / "wiki" / ".meta" / "embeddings.json")
+        repo.write(slug="topic_a", title="Topic A", body="Short content.", sources=["s.md"], tags=[])
+
+        result = run_lint(repo=repo, index=index, max_tokens=6_000)
+        assert len(result.issues_of_kind(LintIssueKind.PAGE_TOO_LARGE)) == 0
