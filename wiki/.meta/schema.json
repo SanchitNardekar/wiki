@@ -1,0 +1,15 @@
+{
+  "name": "ML Wiki",
+  "pages": [
+    {
+      "slug": "learning_to_rank",
+      "title": "Learning to Rank",
+      "description": "ML methods for ranking items by relevance"
+    },
+    {
+      "slug": "information_retrieval",
+      "title": "Information Retrieval",
+      "description": "Search and retrieval of relevant documents"
+    }
+  ]
+}
