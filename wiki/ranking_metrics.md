@@ -11,6 +11,10 @@ updated: '2026-04-14'
 
 This page collects the core *ranking quality metrics* used in information retrieval (IR) and Learning-to-Rank (LTR), and explains how they are used for **offline evaluation** (with human labels) and **counterfactual/online evaluation** (with interaction data like clicks).
 
+It also adds context from *metric learning / embedding retrieval* literature (Deep Metric Learning), where the system is often evaluated as a **retrieval + ranking-by-similarity** pipeline rather than a classic supervised “ranker over a candidate set”. This matters because the *evaluation metrics* used in embedding retrieval (e.g., Recall@K, Precision@K, mAP, rank-1) overlap with IR metrics, while the *training objectives* (contrastive / triplet / angular-margin losses) are very different from standard LTR losses.
+
+**New (LLM reasoning / inference-time ranking) context:** some modern “reasoning” evaluations effectively turn *generation* into a *ranking / aggregation* problem by sampling multiple candidate outputs and selecting an answer via a voting/selection rule (e.g., **majority vote among K samples**). This introduces ranking-like evaluation questions (how to allocate a compute budget, how to aggregate candidates, and how sensitive the metric is to output length).
+
 Related pages to cross-reference:
 - Learning-to-Rank: [[learning_to_rank]]
 - Unbiased / Counterfactual LTR and click models: [[unbiased_learning_to_rank]]
@@ -33,6 +37,39 @@ In web search and recommender/search stacks, evaluation is typically aligned to 
   - **Conversion rate** (purchases, signups, profit, etc.; definition depends on product).
 
 > Note: These are *signals*, not equivalent ground truth. CTR and conversions can be heavily confounded by presentation and selection effects.
+
+### 1.1) Ranking in “embedding retrieval” (metric learning) settings
+
+The new source (a Deep Metric Learning survey) describes systems where we learn an embedding model \(f_\theta(x)\) and rank candidates by a distance/similarity \(\mathcal{D}(f_\theta(q), f_\theta(d))\). This covers:
+- image retrieval and reverse image search,
+- product matching / dedup,
+- face identification,
+- nearest-neighbor retrieval in embedding space.
+
+In these pipelines, “ranking evaluation” still means “put the best matches at the top”, but:
+- labels are often **class identity** (“same instance/class?”) rather than graded topical relevance,
+- evaluation is frequently **top-K retrieval** oriented (e.g., rank-1 accuracy, Recall@K, mAP),
+- the ranking function may be **distance in embedding space** (e.g., \(l_2\) or cosine similarity) rather than a learned scoring function over rich query-document features.
+
+This is relevant to [[search_architecture]] because many modern systems use:
+- a *retrieval stage* (ANN / vector search) and then
+- possibly a *re-ranking stage* (LTR) on a smaller candidate set.
+
+### 1.2) Ranking-like evaluation for sampled generation (LLM reasoning)
+
+The new source (a post on improving DeepSeek-R1-distilled math reasoning models) highlights an evaluation pattern that is structurally similar to ranking/selection:
+
+- For each problem (query), sample many candidate solutions (“rollouts”, “traces”) from a model.
+- Evaluate:
+  - **Pass@1**: fraction of problems where a *single sample* is correct (akin to “best-of-1”).
+  - **Maj@K**: majority-vote accuracy after sampling \(K\) candidates (common is **Maj@32**).
+
+This resembles ranking evaluation because:
+- you have a **set of candidates** and must apply an **aggregation/selection policy** (majority vote; or in other setups, reranking by score/reward),
+- you often have a **budget** (tokens or number of samples) analogous to **@K truncation** in ranked lists,
+- the metric can be **highly sensitive** to factors that change the distribution of candidates (prompting, decoding, maximum length, stopping rules).
+
+Cross-reference (conceptual): aggregation policies for candidates can be viewed as an “architecture” choice similar to retrieval + reranking in [[search_architecture]] (generate candidates → select/aggregate).
 
 ---
 
@@ -127,6 +164,28 @@ Most ranking metrics are reported with a cutoff:
 
 This also aligns with training objectives in many LTR systems, where optimization focuses on the top of the ranking.
 
+### 5.1) “@K” metrics in embedding retrieval / metric learning benchmarks
+
+The new source highlights large-scale retrieval and identification benchmarks (e.g., face identification, landmark retrieval) that commonly report top-heavy metrics such as:
+- **Rank-1 accuracy** (“is the correct match at position 1?”)
+- **Recall@K** (“is at least one correct match in the top K?”)
+- **mAP / MAP** (common in retrieval benchmarks; typically binary relevance at the class/instance level)
+
+These metrics are conceptually compatible with IR ranking evaluation; the main difference is the underlying labeling scheme (often same/different identity) and candidate generation (often full-corpus nearest-neighbor).
+
+> Cross-reference: embedding retrieval is often the *retrieval stage* in [[search_architecture]], and can be followed by LTR re-ranking [[learning_to_rank]].
+
+### 5.2) “@K” analogs in sampled-generation evaluation (Pass@1, Maj@K)
+
+The DeepSeek-R1 math source uses evaluation metrics that behave like “@K” cutoffs, but in **sample space** rather than document space:
+
+- **Pass@1**: correctness of one draw (one rollout).
+- **Maj@K (e.g., Maj@32)**: sample \(K\) candidate answers and take the majority vote.
+
+Important implications (ranking-metric-style “cutoff sensitivity”):
+- Changing \(K\) changes what you measure: *single-sample quality* vs *self-consistency under sampling*.
+- There is a **compute budget** not only in number of samples \(K\), but also in **token budget / max generation length** per sample.
+
 ---
 
 ## 6) Why ranking metrics are hard to optimize directly
@@ -140,6 +199,27 @@ Many ranking metrics depend on **sorting**, which is non-differentiable:
   - probabilistic frameworks like LambdaLoss
 
 Cross-reference: [[learning_to_rank]]
+
+### 6.1) Parallel issue in metric learning: evaluation is ranking, training is a surrogate
+
+Deep Metric Learning (DML) provides an analogous story:
+- **Evaluation** is usually retrieval ranking (top-K, mAP, rank-1).
+- **Training** is typically via surrogate objectives that enforce geometry in embedding space:
+  - contrastive loss, triplet loss, and modern “angular margin” softmax variants.
+
+This is not a contradiction with LTR; it’s the same general pattern (optimize a differentiable proxy for a ranking objective) but with different modeling assumptions (distance in embedding space vs feature-based scoring).
+
+### 6.2) Parallel issue in RL-tuned generation: evaluation is aggregation over samples, training is a surrogate
+
+The DeepSeek-R1 math source describes RL fine-tuning (GRPO and variants) where:
+- **Evaluation** is often **Pass@1** and **Maj@K** under a fixed sampling/decoding setup.
+- **Training** optimizes a surrogate objective (policy gradient with reward shaping/normalization, KL regularization, length penalties, etc.).
+
+A key evaluation lesson from the source:
+- Under some settings, **better Pass@1 does not imply better Maj@K** (they report “Bottom line: better Pass@1 does not mean better Maj@32!”).
+- Therefore, the “metric you optimize mentally” during development must match the “metric you ship/compare on”, similar to how optimizing a pairwise loss doesn’t guarantee best NDCG unless aligned.
+
+> Cross-reference: the “offline vs online” mismatch theme is also central in [[online_evaluation]] and [[unbiased_learning_to_rank]], though the DeepSeek source is about *model sampling/aggregation* rather than clicks.
 
 ---
 
@@ -192,28 +272,67 @@ In LambdaMART/LightGBM-style training, evaluation often logs NDCG at several cut
 
 Cross-reference: [[learning_to_rank]]
 
+### 8.1) Metrics + architecture choices: retrieval vs re-ranking
+
+From the metric learning source’s “case study” framing (large-scale retrieval competitions), a common real-world pattern is:
+
+- **Stage A: embedding retrieval**
+  - Train an embedding model \(f_\theta\); retrieve candidates via nearest neighbors.
+  - Evaluate with top-K retrieval metrics (Recall@K, rank-1, mAP).
+- **Stage B: post-processing / re-ranking**
+  - Apply query expansion, verification, or local feature matching (in vision), or other re-ranking logic.
+  - In classic IR stacks, this role is often served by LTR re-rankers.
+
+Cross-reference: [[search_architecture]], [[learning_to_rank]]
+
+### 8.2) Metric hygiene for sampled-generation evaluations (decoding, stopping, budget)
+
+The DeepSeek-R1 math source underscores that evaluation numbers can move substantially due to “evaluation protocol” choices, many of which are analogs of *logging policy* and *cutoff* choices in ranking:
+
+- **Token budget / max_len matters**
+  - They report that at *higher* token budgets (e.g., 32K vs 16K), **Maj@32 can get slightly worse**, attributing it to increased self-doubt/hallucination when the model has “more time to think”.
+  - This is analogous to how changing **candidate set size** or **reranking depth** in [[search_architecture]] can change measured quality in non-monotonic ways.
+- **Stop conditions matter**
+  - They used a specific stop string for their tuned models because they tended to output correct answers earlier; applying the same stop condition to baseline DeepSeek-R1 caused accuracy drops.
+  - This is analogous to applying a metric/reporting pipeline that is not invariant across systems, which can create unfair comparisons.
+- **Sampling hyperparameters matter**
+  - Temperature and top_p affect the candidate distribution, which affects Pass@1 and Maj@K.
+- **Noise reduction**
+  - For Maj@K, they repeat subsampling/voting multiple times and average to reduce variance—similar in spirit to confidence intervals and repeated runs in [[online_evaluation]].
+
+**Practical recommendation:** when reporting any “top-K” style metric (whether list ranking or sample aggregation), always log:
+- the cutoff \(K\),
+- the budget (tokens, time, or candidate depth),
+- and the sampling/serving policy that generated the candidates.
+
 ---
 
-## 9) Contradictions / cautions from the source
+## 9) Additional background: metric learning objectives (context for ranking evaluation)
 
-Because this page is new, there is no existing content to contradict. However, the new source includes a claim worth flagging as *potentially inconsistent with broader common practice*:
+The new source is not primarily about ranking metrics, but it adds useful context on *why* teams optimize certain surrogates even when evaluation is retrieval ranking.
 
-- The source states: **“MAP and MRR are widely used for documents retrieval but not for search results ranking.”**
-  - **Caution:** In many IR settings, “document retrieval” and “search results ranking” are not cleanly separable—retrieval systems *do* rank results. In practice, MAP/MRR are still widely used for some ranking tasks (especially with binary relevance, navigational queries, QA, or passage retrieval benchmarks).
-  - A more precise interpretation is: **for web search with graded relevance and strong position sensitivity, NDCG/ERR are often preferred**.
+### 9.1) Common supervised metric learning setup
 
-This page adopts that clarified interpretation while preserving the source’s intent.
+Learn:
+- an embedding model \(f_\theta: \mathcal{X} \to \mathbb{R}^n\)
+- a distance \(\mathcal{D}\) (often fixed: \(l_2\) or cosine)
 
----
+Such that:
+- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** when labels match,
+- and **large** otherwise.
 
-## 10) Glossary
+### 9.2) Contrastive and triplet-style losses (surrogates for retrieval ranking)
 
-- **Query**: user input; may include context in behavioral settings.
-- **Document/item**: candidate result being ranked.
-- **Relevance label (graded)**: discrete score representing judged relevance (e.g., 0–4).
-- **Truncation level (@T, @K)**: metric computed only over top \(T\) results.
-- **Gain**: how much credit a relevance label contributes (e.g., \(2^{l}-1\)).
-- **Discount**: reduces credit at lower ranks (e.g., \(\log(1+i)\)).
-- **Behavior policy / evaluation policy**: deployed ranker vs candidate ranker in counterfactual evaluation.
+- **Contrastive loss** (pair-based; margin \(\alpha\))
+  - Pull positive pairs together; push negatives apart up to a margin.
+- **Triplet loss** (anchor/positive/negative; margin \(\alpha\))
+  - Enforces \(D(a,p) + \alpha \le D(a,n)\) for sampled triplets.
+  - Often relies on **negative mining** to be effective.
 
----
+The source emphasizes two classic difficulties:
+- **Sampling issue**: triplet/contrastive methods depend heavily on mining “hard” negatives.
+- **Expansion issue**: local constraints may not globally cluster each class well without additional structure.
+
+These are analogous in spirit to LTR challenges where the surrogate loss must create the right *global ordering behavior* even though it optimizes local comparisons.
+
+### 9.3) Angular-margin softmax losses (ArcFace/Cos

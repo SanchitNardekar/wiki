@@ -14,6 +14,8 @@ Vector search (also called embedding-based retrieval) is a family of retrieval t
 
 This page focuses on **vector search** and **Approximate Nearest Neighbor (ANN)** methods that make nearest-neighbor retrieval feasible at large scale, and how they fit into a broader search system and ranking pipeline (see also [[learning_to_rank]]).
 
+**New in this update:** additional context from supervised **Deep Metric Learning (DML)** on how embeddings are trained (losses, margins, sampling/mining), and how those training choices affect nearest-neighbor behavior.
+
 ---
 
 ## Where vector search fits in a modern search engine
@@ -147,6 +149,145 @@ These approaches trade exactness for speed by mapping vectors into codes/buckets
 
 ---
 
+## Deep Metric Learning (DML) as a foundation for embedding quality (new)
+
+Many embedding models used for vector search can be viewed through the lens of **metric learning**: learning an embedding function \(f_\theta(x)\in\mathbb{R}^n\) such that distances/similarities in embedding space correspond to semantic similarity.
+
+From the new source (a DML survey), the supervised metric learning problem is described as choosing:
+
+- an embedding model \(f_\theta(\cdot)\) (feature extractor), and
+- a distance function \(\mathcal{D}(\cdot,\cdot)\) (often fixed, e.g., \(L_2\)),
+
+so that:
+- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** when labels match,
+- and **large** when labels differ.
+
+### Why this matters for vector search
+
+- Vector search quality (recall/precision at top‑k) depends heavily on **embedding geometry**:
+  - how tightly “similar” items cluster,
+  - how well-separated “dissimilar” items are,
+  - how stable similarity scores are across classes/domains (e.g., long-tail, noisy labels, out-of-distribution queries).
+
+- DML objectives can implicitly choose which similarity metric is most appropriate at serving time:
+  - Many classic DML losses operate explicitly in **Euclidean (\(L_2\)) distance** space.
+  - Many modern “angular margin” losses operate on **cosine similarity** after normalization, aligning closely with cosine/dot-product-based ANN retrieval.
+
+**Mild tension / nuance with existing content (not a direct contradiction):**
+- The existing page emphasizes cosine/Euclidean as retrieval metrics and notes dot-product/MIPS for two-tower retrieval.
+- The new DML source emphasizes that many “direct” metric learning methods are typically defined in **\(L_2\)** space, while later “angular” methods explicitly normalize features and optimize **cosine/angular separation**.  
+  Reconciliation: both families ultimately produce embeddings that can be used in ANN; you should ensure the ANN metric (cosine vs \(L_2\) vs MIPS) matches the training objective and any normalization steps.
+
+Cross-references:
+- Training/ranking pipeline context: [[learning_to_rank]]
+
+---
+
+## Contrastive / “direct” metric learning losses (new)
+
+The DML survey describes early/common supervised metric learning approaches as “contrastive” (sometimes called “direct”), because they directly pull positives together and push negatives apart, typically under \(L_2\).
+
+### Contrastive loss (pairwise)
+
+Given two samples \((x_1,y_1)\), \((x_2,y_2)\), distance \(\mathcal{D}\) (often \(L_2\)), and margin \(\alpha\):
+
+- Pull together same-label pairs via \(\mathcal{D}^2\)
+- Push apart different-label pairs by enforcing a margin
+
+Key practical note from the source:
+- The margin prevents a degenerate solution where the model maps everything to the same point.
+
+### Triplet loss (anchor/positive/negative)
+
+Triplet loss uses:
+- anchor \(x_a\),
+- positive \(x_p\) (same label),
+- negative \(x_n\) (different label),
+
+and enforces:
+- anchor-positive closer than anchor-negative by a margin \(\alpha\).
+
+#### Negative sample mining (important operational detail)
+
+The source highlights that triplet loss performance depends heavily on **negative mining**: selecting “useful” negatives that violate (or nearly violate) the desired margin constraint.
+
+**Engineering implication for retrieval embeddings:**
+- The embedding quality you get for vector search is often bounded by how well you can:
+  - find hard negatives,
+  - scale mining in distributed training,
+  - avoid training collapse or slow convergence when most negatives become “easy”.
+
+### Limitations that motivate newer objectives (from the source)
+
+The DML survey argues that directly optimizing pair/triplet distances has two main issues:
+
+- **Expansion issue:** hard to ensure all same-label samples collapse into a single coherent region *globally* (many objectives enforce local/batch structure).
+- **Sampling issue:** reliance on mining is inconvenient locally and can be problematic at distributed scale.
+
+---
+
+## Moving from Euclidean “direct” losses to angular/cosine margin losses (new)
+
+The DML survey describes a shift (notably after ~2017 in face recognition) toward objectives that improve class separability by operating on **angles / cosine similarity** with normalized features and weights.
+
+This is particularly relevant to vector search because:
+
+- cosine similarity is a standard retrieval metric,
+- normalized embeddings make dot product equivalent to cosine,
+- angular margins can yield more discriminative neighborhoods for nearest-neighbor retrieval.
+
+### Center Loss (regularizing softmax features)
+
+The source describes **Center Loss** as augmenting standard softmax classification loss with an \(L_2\) penalty that pulls embeddings toward a per-class center \(c_{y_i}\).
+
+Claimed benefits in the source:
+- Helps address the expansion issue by providing explicit centers.
+- Reduces reliance on hard mining (mitigates the sampling issue).
+
+### SphereFace → CosFace → ArcFace (large-margin angular/cosine losses)
+
+The source presents a progression of “angular margin” methods:
+
+- **SphereFace (2017):** introduces multiplicative angular margin but has optimization complications (non-monotonicity of cosine; margin depends on \(\theta\); requires piecewise tricks).
+- **CosFace (2018):** introduces an **additive cosine margin** with normalized features and weights; uses scale \(s\) and margin \(m\).
+- **ArcFace (2019):** introduces an **additive angular margin** in angle space; similar setup (normalized features/weights, scale \(s\), margin \(m\)); reported to slightly outperform CosFace in many benchmarks.
+
+#### Hyperparameters \(s\) (scale) and \(m\) (margin)
+
+The source emphasizes that for CosFace/ArcFace:
+- choosing \(s\) and \(m\) is crucial,
+- too small/large \(s\) can harm training dynamics and calibration of probabilities,
+- increasing \(m\) effectively enforces stricter separation (shifts probability curves).
+
+It also cites **AdaCos** (2019) as proposing a heuristic fixed scaling:
+- \(\tilde{s} \approx \sqrt{2}\log(C-1)\) where \(C\) is the number of classes,
+and notes (anecdotally in the blog) that “Adaptive AdaCos” is not commonly seen deployed successfully.
+
+**Connection to vector search serving:**
+- If embeddings are L2-normalized (as in CosFace/ArcFace setups), then:
+  - cosine similarity and dot product become equivalent,
+  - ANN configured for cosine (or inner product on normalized vectors) naturally matches training.
+
+### Handling intra-class variance and imbalance: Sub-center ArcFace + Dynamic Margin
+
+The source introduces two extensions:
+
+- **Sub-center ArcFace (2020):**
+  - multiple centers per class, choosing the closest sub-center.
+  - motivation: a single center is a poor fit when intra-class variance is high and labels are noisy.
+
+- **ArcFace with Dynamic Margin (2020):**
+  - uses per-class margin \(m_i = a\cdot n_i^{-\lambda} + b\) based on class frequency \(n_i\),
+  - motivation: extreme class imbalance; smaller classes may need larger margins.
+
+**Implication for retrieval embeddings:**
+- These methods aim to produce embeddings with:
+  - more robust clusters under noise,
+  - better behavior for long-tail/rare classes,
+  - potentially improved nearest-neighbor neighborhoods (especially top‑k purity) in imbalanced catalogs.
+
+---
+
 ## Hybrid retrieval: vectors + keywords
 
 For web-scale search engines, retrieval often uses a **hybrid** of:
@@ -227,39 +368,4 @@ Cross-references:
 
 ## Biases and evaluation caveats (why retrieval ≠ relevance)
 
-While not specific to ANN mechanics, the source discusses that using user interaction (e.g., clicks) as a proxy for relevance is biased due to effects like:
-
-- position bias,
-- selection bias,
-- trust bias.
-
-This matters to vector search systems because:
-- retrieval quality is often evaluated and improved using interaction logs,
-- hybrid retrieval and ANN changes can affect exposure distributions, thereby changing observed click behavior.
-
-Cross-reference: [[learning_to_rank]] (especially unbiased / counterfactual LTR sections)
-
----
-
-## Practical notes and engineering takeaways
-
-- **Indexing is continuous and offline**: embeddings and features are computed ahead of time and stored in appropriate indexes.
-- **Vector search uses nearest neighbors**: compute query embedding online, retrieve nearest doc embeddings from a vector index.
-- **ANN is essential at scale**: tree-based exact/metric structures are typically avoided in web-scale settings; approximate methods are used for latency and memory reasons.
-- **Two-tower models are operationally index-friendly**:
-  - item/document embeddings can be **precomputed and frozen**,
-  - fast serving via an embedding index,
-  - dot-product scoring aligns with common ANN capabilities.
-- **System design affects behavior**: UI and ranking presentation can change user behavior patterns (relevant if learning from clicks), so retrieval/ranking evaluation should account for these shifts.
-- **Latency constraints drive cascades**: multi-stage retrieval → pre-ranking → ranking is common, partly because small latency increases (e.g., ~100ms) can harm user experience and revenue.
-
----
-
-## Open questions / areas to expand
-
-This page currently reflects ANN mentions from the provided source (hashing and PCA hashing) and high-level search architecture context, plus new detail on two-tower/dual-encoder usage in pre-ranking. Common ANN techniques not covered in the source (e.g., graph-based ANN, vector quantization/IVF-style indexes) are intentionally not asserted here to avoid adding unsourced specifics; they can be added if/when additional sources are provided.
-
-Potential future expansions (awaiting sources):
-- How to choose between **pure retrieval** vs **pre-ranking** usage of embeddings in a cascade.
-- Practical evaluation of **inner product vs cosine** for retrieval and ANN configuration.
-- When to prefer **Siamese vs asymmetric** dual encoders, and how to enforce embedding-space alignment.
+While not specific to ANN mechanics, the source

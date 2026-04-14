@@ -29,6 +29,9 @@ Related pages to link with as the wiki grows:
 - [[online_learning_to_rank]]
 - [[unbiased_learning_to_rank]]
 - [[click_models]]
+- (New, suggested) [[metric_learning]]
+- (New, suggested) [[contrastive_learning]]
+- (New, suggested) [[vector_search]]
 
 ---
 
@@ -407,10 +410,4 @@ A common limitation of basic two-tower models is limited feature interaction bet
     - **CIR module**: contrastive interaction regularization using **InfoNCE** to pull user–positive items closer; trained alongside a logloss.
   - The source reports IntTower outperforms several pre-ranking baselines and can be comparable to some heavier ranking models, with negligible parameter/training overhead and acceptable serving latency.
 
-These additions help connect IR “candidate generation + ranking” with modern deep retrieval/pre-ranking design patterns.
-
----
-
-## Theoretical notes: does LambdaRank optimize a “real” loss?
-
-The source highlights open
+These additions help connect IR “candidate generation +

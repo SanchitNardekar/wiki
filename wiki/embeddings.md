@@ -161,6 +161,162 @@ The new source summarizes results from a QA retrieval study:
 
 ---
 
+## Deep metric learning (DML) as a lens on embeddings (new)
+
+A complementary view of embeddings—especially common in **visual search** and some retrieval settings—is **Deep Metric Learning**: learning an embedding function \(f_\theta(\cdot)\) such that *distances in embedding space* reflect label-based similarity.
+
+### Supervised metric learning problem setting
+Given data points \(\mathcal{X}\), labels \(\mathcal{Y}\) (finite discrete set), an embedding network:
+
+- \(f_\theta: \mathcal{X} \to \mathbb{R}^n\)
+
+and a (usually fixed) distance \(\mathcal{D}: \mathbb{R}^n \to \mathbb{R}\), train so that:
+
+- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** when \(y_1=y_2\)
+- and **large** when \(y_1\neq y_2\)
+
+This perspective connects directly to retrieval: nearest neighbors under \(\mathcal{D}\) define candidate matches.
+
+Cross-references: [[representation-learning]], [[information-retrieval]], [[nearest-neighbor-search]].
+
+### Distances used: Euclidean vs cosine (and normalization)
+The DML survey emphasizes:
+- “Direct” contrastive approaches commonly use **\(L_2\) (Euclidean) distance**.
+- More recent “angular margin” approaches operate in **cosine/angle space** by:
+  - normalizing feature vectors (embeddings) to unit length and
+  - normalizing classifier weights (class prototypes), then
+  - adding explicit **margins** in cosine or angle space.
+
+**Connection to IR embeddings (note):**
+- The existing page already frames dense retrieval with **cosine similarity** or **Euclidean distance**. The DML survey adds a practical training nuance: cosine/angle objectives typically rely on explicit **normalization** (unit vectors) and margin shaping, which affects downstream distance geometry.
+
+Cross-references: [[contrastive-learning]].
+
+---
+
+## Loss functions for learning embeddings (expanded with DML survey)
+
+Embeddings are shaped primarily by the **training objective**. In retrieval systems, these objectives are often formulated as pairwise/listwise ranking losses (see [[learning-to-rank]]) or contrastive objectives (see [[contrastive-learning]]). In supervised metric learning, they are often expressed directly in terms of distances/margins.
+
+### Contrastive loss (pairwise)
+Classic contrastive loss (Chopra et al., 2005) for two samples \((x_1,x_2)\):
+
+\[
+\mathcal{L}_\text{contrast}
+=
+\mathbb{1}_{y_1 = y_2} \, \mathcal{D}^2(f_\theta(x_1), f_\theta(x_2))
++
+\mathbb{1}_{y_1 \ne y_2} \, \max\left(0, \alpha - \mathcal{D}^2(f_\theta(x_1), f_\theta(x_2))\right)
+\]
+
+- \(\alpha\) is a **margin** to prevent collapse (mapping everything to the same point).
+
+Cross-references: [[contrastive-learning]].
+
+### Triplet loss and negative mining
+Triplet loss (Schroff et al., 2015) uses an anchor/positive/negative \((x_a,x_p,x_n)\):
+
+\[
+\mathcal{L}_\text{triplet}
+=
+\max\left(0, \mathcal{D}^2(f_\theta(x_a), f_\theta(x_p)) - \mathcal{D}^2(f_\theta(x_a), f_\theta(x_n)) + \alpha \right)
+\]
+
+Key practical ingredient emphasized by the DML survey:
+- **Negative sample mining** is often required to pick informative/hard negatives.
+
+Cross-references: [[contrastive-learning]].
+
+### Limitations highlighted for distance-based contrastive objectives (new)
+The DML survey argues many “direct” Euclidean contrastive objectives face two recurring issues:
+
+- **Expansion issue:** hard to ensure *all* same-class samples collapse to a coherent region globally (objectives can be too local/batch-dependent).
+- **Sampling issue:** strong reliance on sophisticated mining (hard in distributed training).
+
+**Integration note:** This frames why many modern systems prefer objectives that use *global class prototypes* (e.g., softmax-based angular margins) or batch-contrastive methods (e.g., InfoNCE variants).
+
+Cross-references: [[contrastive-learning]].
+
+### Center loss: augmenting softmax with embedding compactness (new)
+Center loss (Wen et al., 2016) adds a term pulling features toward per-class centers \(c_{y_i}\):
+
+\[
+\mathcal{L}_\text{center} = \mathcal{L}_\text{softmax} + \frac{\lambda}{2}\sum_{i=1}^{N}\|z_i - c_{y_i}\|_2^2
+\]
+
+- Addresses:
+  - sampling burden (less mining),
+  - tighter intra-class clusters.
+
+Cross-references: [[representation-learning]].
+
+### Angular margin softmax family (CosFace / ArcFace etc.) (new)
+The DML survey describes a shift toward **angular margin** methods (popular in face recognition and instance retrieval):
+
+Common setup:
+- Normalize embeddings \(z\) and class weights \(W_j\) so \(\|z\|=\|W_j\|=1\).
+- Logits become cosine similarities: \(W_j^\top z = \cos\theta_j\).
+- Introduce a **margin** to enforce stronger inter-class separation.
+
+#### SphereFace (multiplicative angular margin)
+SphereFace (Liu et al., 2017) uses a multiplicative angular margin \(\mu\) inside \(\cos(\mu \theta)\).
+- The survey notes optimization difficulties due to cosine non-monotonicity and the need for piecewise tricks.
+
+#### CosFace (additive cosine margin)
+CosFace (Wang et al., 2018):
+
+\[
+\mathcal{L}_\text{CosFace}
+=
+-\frac{1}{N}\sum_i
+\log
+\frac{\exp\{s(\cos(\theta_{y_i,i})-m)\}}
+{\exp\{s(\cos(\theta_{y_i,i})-m)\}+\sum_{j\ne y_i}\exp\{s\cos(\theta_{j,i})\}}
+\]
+
+- \(s\): scaling parameter; \(m\): cosine margin parameter.
+
+#### ArcFace (additive angular margin)
+ArcFace (Deng et al., 2019) adds margin in **angle space**:
+
+\[
+\mathcal{L}_\text{ArcFace}
+=
+-\frac{1}{N}\sum_i
+\log
+\frac{\exp\{s\cos(\theta_{y_i,i}+m)\}}
+{\exp\{s\cos(\theta_{y_i,i}+m)\}+\sum_{j\ne y_i}\exp\{s\cos(\theta_{j,i})\}}
+\]
+
+- Reported as slightly stronger than CosFace across benchmarks in the survey.
+
+#### Hyperparameter sensitivity: scaling \(s\) and margin \(m\)
+The DML survey emphasizes:
+- Choosing \(s\) and \(m\) is crucial; poor choices can make training under-penalize errors or over-penalize confident correct cases.
+- AdaCos proposes a fixed scaling heuristic: \(\tilde{s} \approx \sqrt{2}\log(C-1)\) where \(C\) is number of classes.
+
+**Practical note (new, and a mild contradiction to “contrastive learning usually computes embeddings”):**
+- The existing page says embeddings are “usually computed using state-of-the-art contrastive learning neural networks.”  
+- The DML survey suggests in *supervised metric learning*, **softmax + margin** objectives (ArcFace/CosFace variants) can outperform direct contrastive losses (triplet/contrastive), and are widely used in strong real-world retrieval/recognition solutions.  
+  - **Resolution:** both families are common; “usually” depends heavily on modality, supervision type, and whether training is framed as classification vs pairwise ranking/contrastive.
+
+Cross-references: [[contrastive-learning]], [[multimodal-ml]].
+
+### Sub-centers and dynamic margins for long-tail / noisy classes (new)
+The DML survey highlights extensions for difficult, imbalanced, and noisy datasets:
+
+- **Sub-Center ArcFace:** multiple centers per class; uses nearest sub-center, helping with intra-class variability and label noise.
+- **Dynamic margin:** class-dependent margins based on class frequency (rarer classes get larger margins), improving convergence under imbalance.
+
+**Connection to IR:** This is relevant to retrieval domains with:
+- long-tail entities/items,
+- noisy labels (click logs, weak supervision),
+- heterogeneous class granularity (e.g., product catalogs).
+
+Cross-references: [[recommender-systems]], [[counterfactual-learning]] (for noisy/biased labels).
+
+---
+
 ## Representation learning signals used for ranking
 
 Embeddings rarely act alone in production ranking. The source emphasizes:
@@ -192,187 +348,4 @@ Cross-references: [[learning-to-rank]].
 
 After retrieval produces a candidate set, **Learning to Rank (LTR)** models re-order results.
 
-The source frames LTR as learning a function \(f(\mathbf{q}, \mathcal{D})\) that produces a ranking (often via scoring each document and sorting by score). Embeddings contribute to LTR by:
-
-- improving candidate set quality (better retrieval recall/semantic matching),
-- providing learned semantic features for the ranker,
-- enabling multimodal ranking (e.g., combining text and image embeddings).
-
-Cross-reference: [[learning-to-rank]].
-
----
-
-## Neural ranker architecture spectrum (new)
-
-The new source places two-tower models within a broader set of neural matching/ranking paradigms (query→document, user→item):
-
-- **Two-tower / dual encoder (bi-encoder):**
-  - Representation-based; embeddings computed independently, similarity at output (late interaction).
-  - Strong serving efficiency; supports decoupled indexing of document/item embeddings.
-- **Interaction-focused “matching” models (e.g., DRMM, KNRM):**
-  - Build an interaction matrix over words/phrases and apply CNN/MLP-style modeling.
-  - More interaction than two-tower, typically more expensive.
-- **Cross-encoders (e.g., [[bert]] used as a cross-encoder):**
-  - Jointly encode query and document to model full token-level interactions.
-  - Usually highest accuracy but expensive; typically used in re-ranking.
-- **Late-interaction hybrids (e.g., ColBERT):**
-  - Preserve query-document decoupling while allowing richer matching than a single dot product (token-level late interaction).
-  - Can still support indexing document-side representations for efficient retrieval.
-
-Cross-references: [[bert]], [[learning-to-rank]], [[dense-retrieval]].
-
----
-
-## Enhancing two-tower embeddings: interaction and regularization extensions (new)
-
-A recurring limitation of vanilla two-tower models is **limited information exchange between towers** (because embeddings are trained largely independently, interacting only at the final similarity computation).
-
-The new source summarizes several extensions aimed at improving quality while maintaining efficiency:
-
-### Dual Augmented Two-Tower (DAT)
-- Augments each tower’s input with additional vectors capturing **historical positive interaction information** from the other tower.
-- Adds a **category alignment loss** to address category imbalance by transferring knowledge from high-data categories to low-data categories.
-- The source notes later research found gains can be **limited**.
-
-### Interaction Enhanced Two Tower (IntTower)
-Designed to improve both **information interaction** and **inference efficiency**, with three main components:
-
-- **Light-SE block (feature recalibration):**
-  - Inspired by Squeeze-and-Excitation Networks (SENet).
-  - Learns feature importance weights to emphasize informative features and suppress less useful ones.
-  - Uses a lightweight single fully-connected layer variant for efficiency.
-- **FE-block (Fine-grained & Early feature interaction):**
-  - Inspired by ColBERT’s “late interaction” ideas.
-  - Performs fine-grained early interactions between multi-layer user representations and the last layer of item representation.
-- **CIR module (Contrastive Interaction Regularization):**
-  - Uses an InfoNCE-style contrastive loss to bring user vectors closer to positive items (and farther from negatives).
-  - Combined with standard supervised loss (e.g., logloss on labels).
-
-Reported results (as described in the source):
-- IntTower outperforms baselines including Logistic Regression, Two-Tower, DAT, and COLD for pre-ranking.
-- It can be comparable to some heavier ranking models (Wide&Deep, DeepFM, DCN, AutoInt) with negligible parameter/training overhead and acceptable latency.
-
-Cross-references: [[contrastive-learning]], [[learning-to-rank]], [[recommender-systems]].
-
----
-
-## Relevance signals and their relationship to representations
-
-The source describes relevance as often measured using a combination of:
-
-- **Human-labeled judgments**
-  - expensive but high-quality; often multi-grade relevance (e.g., 1–5)
-- **Click-through rate (CTR)**
-  - cheap but biased (e.g., position bias)
-- **Conversion rate**
-  - task/business dependent (e.g., buys per search in e-commerce)
-
-Embeddings/representation learning influences these signals indirectly by changing what gets retrieved and shown, which then changes observed clicks/conversions, and by supporting personalization or query understanding.
-
-Cross-references: [[click-models]], [[counterfactual-learning]], [[unbiased-learning-to-rank]].
-
----
-
-## Evaluation metrics (embedding-aware pipelines)
-
-Even though embeddings are not a metric by themselves, embedding-based retrieval and representation learning are typically evaluated end-to-end with ranking metrics, including:
-
-- **MAP** (Mean Average Precision)
-- **MRR** (Mean Reciprocal Rank)
-- **ERR** (Expected Reciprocal Rank)
-- **NDCG** (Normalized Discounted Cumulative Gain)
-
-### NDCG definition (as used in LTR)
-Define:
-
-\[
-DCG@T = \sum_{i=1}^T \frac{2^{l_i} - 1}{\log (1 + i)}
-\]
-
-and:
-
-\[
-NDCG@T = \frac{DCG@T}{\max DCG@T}
-\]
-
-where \(l_i\) is the relevance label at rank \(i\), and \(T\) is truncation level (e.g., 10).
-
-### ERR definition (as used in LTR)
-\[
-ERR = \sum_{r=1}^n \frac{1}{r} R_{r} \prod_{i=1}^{r-1} \left( 1 - R_i \right), \quad \text{where}\; R_i = \frac{2^{l_i} - 1}{2^{l_m}}
-\]
-
-Cross-references: [[ndcg]], [[mrr]], [[map]], [[evaluation-metrics]].
-
----
-
-## Embeddings vs. lexical retrieval: complementary strengths
-
-From the source’s description of hybrid retrieval, a practical summary is:
-
-- **Lexical retrieval (BM25/TF-IDF on inverted indexes)** is strong for:
-  - exact term matches, rare entities, precise keyword queries
-- **Embedding-based retrieval (vector search)** is strong for:
-  - semantic similarity, paraphrase matching, conceptual matches, multilingual alignment (in some models)
-
-In web-scale systems, **hybrids** are used to balance precision/recall and robustness.
-
-Cross-references: [[bm25]], [[dense-retrieval]], [[hybrid-retrieval]].
-
----
-
-## Model families used to produce embeddings (as referenced)
-
-The source mentions embeddings are “usually computed using state-of-the-art contrastive learning neural networks,” with examples:
-
-- **BERT-like** models for text embeddings
-- **SigLIP** embeddings for vision / visual search
-
-Additional model families/architectures emphasized by the new source (in retrieval + pre-ranking contexts):
-
-- **DSSM-style** two-tower models (dual encoder / bi-encoder) originally developed for mapping queries to relevant documents using clickthrough data.
-- **ColBERT-style** late interaction models (token-level late interaction while still enabling document-side indexing).
-
-Cross-references: [[bert]], [[contrastive-learning]], [[multimodal-ml]], [[dense-retrieval]].
-
----
-
-## Practical notes and caveats
-
-- **Embeddings are infrastructure-dependent in search:**
-  - They require a **vector index** and an ANN retrieval layer.
-- **Bias and feedback loops:**
-  - Changes in embedding retrieval can change what users see, which changes clicks, which can reinforce bias unless corrected with methods like [[unbiased-learning-to-rank]].
-- **Page design affects interaction biases:**
-  - The source notes eye-tracking evidence that UI design changes can “flatten” attention distribution across ranks, affecting position bias estimators.
-
-### Serving tradeoffs in two-tower systems (new)
-- **Decoupling is the core efficiency win:** precompute and index document/item embeddings; compute query/user embedding online.
-- **Freezing embeddings trades freshness vs latency/cost:**
-  - Freezing item embeddings speeds serving but requires a strategy for updates (incremental embedding refresh, periodic full rebuilds, or offline daily retraining + reindex).
-- **Richer interactions usually move later in the cascade:**
-  - Cross-encoders and other interaction-heavy architectures tend to be used in re-ranking due to cost.
-
-Cross-references: [[vector-index]], [[approximate-nearest-neighbors]], [[learning-to-rank]], [[position-bias]], [[trust-bias]], [[selection-bias]].
-
----
-
-## Related pages
-
-- [[learning-to-rank]] (LTR objectives and ranking models)
-- [[approximate-nearest-neighbors]] (ANN algorithms for vector search)
-- [[contrastive-learning]] (common training paradigm for modern embedding models)
-- [[bm25]] and [[tf-idf]] (lexical retrieval baselines used alongside embeddings)
-- [[bert]] (text embedding model family)
-- [[vector-database]] / [[vector-index]] (storage and serving layer for embeddings)
-- [[counterfactual-learning]] and [[unbiased-learning-to-rank]] (learning from biased click signals)
-- [[dense-retrieval]] (retrieval with dual encoders / embeddings)
-- [[hybrid-retrieval]] (combining lexical and dense methods)
-- [[recommender-systems]] (user-item retrieval and ranking pipelines)
-
----
-
-## Source integration notes
-
-- This page is initialized from a source focused on **Learning to Rank in Web Search**, integrating the parts relevant to embeddings:
-  - vector
+The source frames LTR as learning a function \(f(\mathbf{q}, \mathcal{D})\) that produces a ranking (often via scoring each document and sorting by score). Embeddings contribute to LTR

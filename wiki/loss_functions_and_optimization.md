@@ -344,66 +344,52 @@ While the source does not give a full equation, the commonly used InfoNCE form f
 
 ---
 
-## Theoretical status: is LambdaRank optimizing a “real” loss?
+## Deep Metric Learning losses as ranking-friendly objectives (Contrastive/Triplet/Margin-Softmax)
 
-The source describes long-standing theoretical questions:
+The new source (“Deep Metric Learning: a (Long) Survey”, Chan Kha Vu, 2021) adds a complementary view: many retrieval / pre-ranking systems can be trained using **deep metric learning (DML)** objectives that directly shape the embedding geometry.
 
-- Does LambdaRank converge?
-- Is there a global underlying loss function across iterations?
+This section does **not replace** LTR listwise methods (e.g., LambdaMART). Instead, it explains a commonly used objective family for **embedding-based retrieval and pre-ranking** in [[information_retrieval]] stacks.
 
-Evidence and developments summarized:
+Cross-references:
+- [[contrastive_learning]] (general contrastive family; InfoNCE and beyond)
+- [[learning_to_rank]] (where these fit relative to pairwise/listwise LTR)
 
-- Donmez et al. (2009): empirical local optimality via one-sided Monte Carlo test (sampling random directions and verifying metric decreases with small steps).
-- Burges et al. (2006): attempted justification using Poincaré lemma (exact/closed forms).
-  - Symmetry conditions can hold at fixed weights, but global existence across iterations is unclear because lambdas depend on rankings induced by current scores.
-- Wang et al. (2019): provides a probabilistic framework (LambdaLoss) showing LambdaRank corresponds to an EM-like optimization of a well-defined objective / upper bound.
+### Problem setting (supervised metric learning)
 
----
-
-## LambdaLoss (Wang et al., 2019): a probabilistic framework for metric-driven objectives
-
-LambdaLoss treats the **ranked list** as a latent variable and defines a likelihood of observing labels given scores by mixing over permutations.
-
-### Generic mixture likelihood
-
-Let **s** be scores, **π** a permutation (ranking), and **Π** the set of all permutations:
+Given labeled samples \(x \in \mathcal{X}\) with discrete labels \(y \in \mathcal{Y}\), train an embedding model:
 
 \[
-P(y \mid s) = \sum_{\pi \in \Pi} P(y \mid s, \pi) P(\pi \mid s)
+f_{\theta}(\cdot): \mathcal{X} \to \mathbb{R}^n
 \]
 
-Loss is negative log-likelihood:
+with a (usually fixed) distance function \(\mathcal{D}\) such that:
+
+- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** if \(y_1=y_2\)
+- and **large** otherwise.
+
+Common choices:
+- Euclidean distance \(\|p-q\|_2\)
+- cosine distance / similarity (especially with normalized embeddings)
+
+**Connection to ranking:** a retrieval system ranks candidates by a similarity score \(s(u,v)\) (dot/cosine); DML losses make this similarity **order positives above negatives**, aligning with ranking needs at retrieval/pre-ranking time.
+
+### “Direct” contrastive approaches (pair/triplet-based)
+
+These objectives are “direct” in the sense that they explicitly pull positives together and push negatives apart.
+
+#### Contrastive loss (pair-based)
+
+For two samples \((x_1,y_1)\), \((x_2,y_2)\) with a margin \(\alpha\):
 
 \[
-\mathcal{L}(y, s) = -\log \sum_{\pi \in \Pi} P(y \mid s, \pi)P(\pi \mid s)
+\mathcal{L}_\text{contrast} =
+\mathbb{1}_{y_1 = y_2} \, \mathcal{D}^2_{f_\theta}(x_1, x_2)
++
+\mathbb{1}_{y_1 \ne y_2} \, \max(0, \alpha - \mathcal{D}^2_{f_\theta}(x_1, x_2))
 \]
 
-Optimization interpretation:
+- The **margin** prevents collapse to a single point embedding.
 
-- Can be optimized via an **EM process**:
-  - E-step: compute \(P(\pi \mid s)\) from current scores
-  - M-step: update model to minimize negative log-likelihood
+#### Triplet loss (anchor/positive/negative)
 
-### Recovering RankNet in this framework
-
-If preferences are modeled via a Bradley–Terry style likelihood independent of π, the loss reduces to a RankNet-like form (pairwise logistic loss).
-
-### Making it rank-sensitive (toward NDCG-like behavior)
-
-Define gain/discount functions analogous to NDCG:
-
-\[
-G(i) = \frac{2^{y_i}-1}{\max DCG}, \quad D(i)=\log(1+\pi_i)
-\]
-
-Modify preference likelihood to include rank positions:
-
-\[
-P( y_i > y_j \mid s_i, s_j, \pi_i, \pi_j)
-=
-\left(\frac{1}{1 + e^{-\sigma(s_i - s_j)}}\right)^{
-|G(i)-G(j)|\cdot \left|\frac{1}{D(\pi_i)} - \frac{1}{D(\pi_j)}\right|
-}
-\]
-
-The paper also considers distributions over π induced by noisy scores; the source notes using a **hard assignment**
+For anchor \(x_a\), positive \(x_p\) (same class), negative \(x_n\) (different

@@ -2,6 +2,7 @@
 slug: deep_learning_fundamentals
 sources:
 - blog.reachsumit.com
+- hav4ik.github.io
 tags: []
 title: Deep Learning Fundamentals
 updated: '2026-04-14'
@@ -219,6 +220,188 @@ Examples mentioned:
 
 ---
 
+## Deep metric learning (DML) fundamentals (new)
+
+The two-tower retrieval framing is closely related to **deep metric learning**: learning an embedding space where “similar” entities are near and “dissimilar” entities are far.
+
+- **Goal (supervised DML):**
+  - Learn an embedding model \( f_\theta: \mathcal{X} \rightarrow \mathbb{R}^n \)
+  - Choose a distance/similarity function \( \mathcal{D} \) (often fixed)
+  - Ensure:
+    - small \( \mathcal{D}(f_\theta(x_1), f_\theta(x_2)) \) when \(y_1=y_2\)
+    - large \( \mathcal{D}(f_\theta(x_1), f_\theta(x_2)) \) when \(y_1\neq y_2\)
+
+- **Common distances/similarities:**
+  - Euclidean / \(l_2\) distance (classic metric learning formulation)
+  - Cosine similarity / angular distance (common in angular-margin methods)
+
+**Connection to retrieval systems:**
+- Retrieval and recommendation with two-tower models can be seen as **metric learning at scale**:
+  - learn embeddings (users/queries/items) + a similarity (dot product / cosine)
+  - use an ANN index for fast nearest-neighbor search
+
+> Related: [[metric_learning]], [[contrastive_learning]], [[representation_learning]], [[dense_retrieval]], [[vector_search]]
+
+---
+
+## Contrastive losses in metric learning (pairs, triplets, and beyond) (new)
+
+Many embedding systems are trained by directly enforcing “pull positives together, push negatives apart”.
+
+### Contrastive loss (pairwise)
+
+A classic objective over pairs \((x_1, x_2)\) with margin \(\alpha\):
+
+- If \(y_1=y_2\): minimize squared distance \( \mathcal{D}^2(f(x_1), f(x_2)) \)
+- If \(y_1\neq y_2\): enforce a margin via \( \max(0, \alpha - \mathcal{D}^2(\cdot)) \)
+
+Motivation for the margin:
+- prevents a degenerate solution where all embeddings collapse to a single point.
+
+> Related: [[loss_functions]], [[contrastive_learning]]
+
+### Triplet loss
+
+Uses triples \((x_a, x_p, x_n)\) with \(y_a=y_p\), \(y_a\neq y_n\):
+
+\[
+\mathcal{L}_\text{triplet} = \max(0, \mathcal{D}^2(a,p) - \mathcal{D}^2(a,n) + \alpha)
+\]
+
+Key practical ingredient: **negative mining**
+- sample “hard” or “semi-hard” negatives where
+  \[
+  \mathcal{D}(a,n) < \mathcal{D}(a,p) + \alpha
+  \]
+- without mining, gradients can become sparse late in training (many triplets yield zero loss).
+
+> Related: [[negative_sampling]], [[metric_learning]]
+
+### Known issues with direct distance-based objectives (as summarized in the new source)
+
+The new source highlights two recurring problems when optimizing directly in \(l_2\) space:
+
+- **Expansion issue:** difficult to ensure all samples of a class collapse into a coherent global region (local constraints may not enforce global structure).
+- **Sampling issue:** performance depends heavily on mining strategies, which becomes operationally awkward at scale (e.g., distributed training).
+
+These issues help motivate objectives that behave more like classification with stronger geometric constraints (below).
+
+---
+
+## From softmax classification to discriminative embeddings (new)
+
+The new source explicitly notes that **softmax cross-entropy** can be used for metric learning, but is often **inferior** to specialized metric-learning objectives in terms of producing tightly clustered, well-separated embeddings.
+
+### Center loss (softmax + center regularizer)
+
+Adds a term pulling embeddings toward learned class centers \(c_{y_i}\):
+
+\[
+\mathcal{L}_\text{center} = \mathcal{L}_\text{softmax} + \frac{\lambda}{2}\sum_i \lVert z_i - c_{y_i}\rVert_2^2
+\]
+
+Claimed benefits (per source):
+- mitigates the *expansion issue* by providing explicit class centers
+- mitigates the *sampling issue* by reducing reliance on hard mining
+
+Limitations noted conceptually in the source’s progression:
+- “single center per class” can struggle with high intra-class variance and noisy labels, motivating multi-center variants later (see Sub-Center ArcFace).
+
+> Related: [[loss_functions]], [[classification]], [[representation_learning]]
+
+---
+
+## Angular-margin losses (SphereFace, CosFace, ArcFace) (new)
+
+A major trend in supervised deep metric learning (especially face recognition and instance retrieval benchmarks) is learning embeddings on a **hypersphere**, using **angular margins** to increase inter-class separation and reduce intra-class variance.
+
+Common setup for these losses:
+- normalize classifier weights: \(\|W_j\|=1\)
+- normalize embeddings/features: \(\|z\|=1\)
+- often set bias \(b=0\)
+- use a **scale** parameter \(s\) to keep softmax gradients well-conditioned
+
+### SphereFace (multiplicative angular margin)
+
+- Introduces a multiplicative angular margin \(\mu\) by replacing \(\cos(\theta)\) with \(\cos(\mu\theta)\).
+- New source notes optimization complications due to cosine non-monotonicity and dependence of the effective margin on \(\theta\), motivating later variants.
+
+### CosFace (additive cosine margin)
+
+Adds an additive margin \(m\) in cosine space:
+
+\[
+\mathcal{L}_\text{CosFace} = -\frac{1}{N}\sum_i \log \frac{\exp(s(\cos\theta_{y_i}-m))}{\exp(s(\cos\theta_{y_i}-m)) + \sum_{j\neq y_i}\exp(s\cos\theta_j)}
+\]
+
+Notes from the source:
+- choosing \(s\) and \(m\) is important; \(s\) should not be too small (can’t reach confident probabilities) or too large (won’t penalize mistakes).
+
+### ArcFace (additive angular margin)
+
+Defines the margin in angle space by using \(\cos(\theta + m)\):
+
+\[
+\mathcal{L}_\text{ArcFace} = -\frac{1}{N}\sum_i \log \frac{\exp(s\cos(\theta_{y_i}+m))}{\exp(s\cos(\theta_{y_i}+m)) + \sum_{j\neq y_i}\exp(s\cos\theta_j)}
+\]
+
+Source claim:
+- ArcFace is “very similar” to CosFace, but tends to be **slightly better** across benchmarks in reported results.
+
+> Related: [[metric_learning]], [[loss_functions]]
+
+---
+
+## Handling noise, intra-class variance, and imbalance in metric learning (new)
+
+### Sub-Center ArcFace (multiple centers per class)
+
+Motivation:
+- A single center per class can be too restrictive when intra-class variance is high or labels are noisy.
+
+Idea:
+- each class has \(K\) sub-centers \(\{W_{j,1}\dots W_{j,K}\}\)
+- use the closest sub-center for computing the effective angle
+
+Benefit claimed:
+- dominant clean modes cluster to main centers; noisy/hard samples can be absorbed by other centers.
+
+### ArcFace with dynamic margin (class-dependent margins)
+
+Motivation:
+- extreme class imbalance (long tail) can cause poor convergence for rare classes.
+
+Proposed rule (per source):
+\[
+m_i = a\cdot n_i^{-\lambda} + b
+\]
+- rarer classes (smaller \(n_i\)) get larger margins.
+
+> Related: [[class_imbalance]], [[long_tail_distributions]]
+
+---
+
+## Practical “what works” notes from metric learning case studies (new)
+
+The new source summarizes empirical practices from Kaggle-style large-scale retrieval/recognition tasks (images and also text):
+
+- **Shift in popularity (reported):**
+  - older competitions: Triplet Loss and variants were common
+  - later competitions (e.g., Google Landmarks 2020): ArcFace/CosFace variants used extremely widely among top solutions
+- **ArcFace/CosFace can be used beyond images:**
+  - reported to work for **text embeddings** as well (e.g., product matching with both image and text towers)
+- **Post-processing often matters in retrieval:**
+  - metric learning alone may not be sufficient; solutions often use query expansion and verification/matching steps
+- **Hyperparameters differ by modality:**
+  - optimal \((s,m)\) may differ for image vs text models.
+
+Operationally, this fits the broader retrieval theme:
+- embedding learning is only part of the system; indexing, ANN, and downstream heuristics matter too.
+
+> Related: [[information_retrieval]], [[embedding_models]], [[vector_search]]
+
+---
+
 ## Practical takeaways (fundamentals emphasized by the source)
 
 - Deep learning in retrieval/ranking is often about **representation learning under latency constraints**.
@@ -227,31 +410,16 @@ Examples mentioned:
   - decoupled inference,
   - fast similarity computation.
 - Modern extensions (DAT, IntTower, late-interaction models like ColBERT) attempt to mitigate the classic **lack of interaction** while retaining efficiency.
+- Deep metric learning provides a complementary lens:
+  - many embedding models can be trained with **pair/triplet** losses or **angular-margin softmax** losses to produce more discriminative spaces.
 
 ---
 
-## Contradictions / tensions to note
+## Contradictions / tensions to note (updated)
 
-Because this page is newly created from a single source, there are **no direct contradictions with prior page content** yet.
+### 1) “InfoNCE-style contrastive loss” vs “move away from contrastive approaches”
+- **Existing page:** IntTower’s CIR module uses an **InfoNCE-style contrastive loss** as a helpful regularizer.
+- **New source:** argues that in *supervised deep metric learning*, the field “moved away” from direct \(l_2\)-contrastive / triplet-style objectives due to **sampling** and **expansion** issues, favoring **angular-margin** softmax-style objectives (ArcFace/CosFace).
 
-However, the source itself highlights an important *design tension* (not a strict contradiction, but a tradeoff that often leads to conflicting choices in practice):
-
-- **Two-Tower strength:** efficiency and decoupling (fast indexing and inference)
-- **Two-Tower weakness:** limited cross-input interaction
-- **Cross-encoders strength:** rich interaction modeling and often higher accuracy
-- **Cross-encoders weakness:** much higher inference cost (hard to apply at large candidate sizes)
-
----
-
-## References (from source)
-
-- Deep Structured Semantic Model (DSSM): Huang et al. (2013)
-- ColBERT: Khattab & Zaharia (2020)
-- Exploring Dual Encoder Architectures for QA: Dong et al. (2022)
-- Siamese networks: Bromley et al. (1993)
-- DAT: Yu et al. (2021)
-- IntTower: Li et al. (2022)
-- Squeeze-and-Excitation Networks (SENet): Hu et al. (2017)
-- InfoNCE overview resource: Lilian Weng (blog reference)
-- COLD: Wang et al. (2020)
-- FSCD: Ma et al. (2021)
+This is not a strict contradiction, but it is a **contextual tension**:
+- In retrieval/pre-ranking, InfoNCE-style objectives can be effective and scalable with
