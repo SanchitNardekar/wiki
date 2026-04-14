@@ -88,10 +88,10 @@ Common index types mentioned in web search and large-scale retrieval:
 A common industrial pattern (especially in large-scale retrieval and *pre-ranking*) is to learn embeddings with a **two-tower / dual-encoder** model, then store (typically) the *document/item* tower embeddings in a vector index for fast similarity search:
 
 - Two separate encoders produce:
-  - a **query/user embedding** \( \mathbf{e}_q \)
-  - a **document/item embedding** \( \mathbf{e}_d \)
+  - a **query/user embedding** $ \mathbf{e}_q $
+  - a **document/item embedding** $ \mathbf{e}_d $
 - A similarity score is computed with a cheap function, often **inner product**:
-  - \( s(q,d) = \langle \mathbf{e}_q, \mathbf{e}_d \rangle \)
+  - $ s(q,d) = \langle \mathbf{e}_q, \mathbf{e}_d \rangle $
 
 Operational notes from the existing page content:
 - The two towers can be computed **independently in parallel** and only interact at the output (“**late interaction**”).
@@ -99,7 +99,7 @@ Operational notes from the existing page content:
 - Some systems may even freeze both towers and retrain offline periodically (e.g., daily) while rebuilding indexes.
 
 Additional note from the new source (Cosine Adapter paper, CIKM’24):
-- Many dense retrieval systems use **cosine similarity** \( \cos(\mathbf{e}_q,\mathbf{e}_d) \) for ANN search and top-*K* candidate retrieval, which can create downstream challenges for *filtering* (see “Relevance filtering” below).
+- Many dense retrieval systems use **cosine similarity** $ \cos(\mathbf{e}_q,\mathbf{e}_d) $ for ANN search and top-*K* candidate retrieval, which can create downstream challenges for *filtering* (see “Relevance filtering” below).
 
 (These ideas connect directly to the “Vector index” section and to [[approximate_nearest_neighbors]] for scalable nearest-neighbor retrieval, and practically to [[vector_search]].)
 
@@ -203,14 +203,14 @@ The existing page distinguishes families of neural ranking/matching models that 
 ## Learning to Rank problem setup
 
 Given:
-- a query \( \mathbf{q} \)
-- a set of retrieved documents \( \mathcal{D} = \{d_1, \ldots, d_n\} \)
+- a query $ \mathbf{q} $
+- a set of retrieved documents $ \mathcal{D} = \{d_1, \ldots, d_n\} $
 
-Learn a function \( f(\mathbf{q}, \mathcal{D}) \) (often implemented as scoring each document independently) that produces an ordering of documents, ideally with the most relevant first.
+Learn a function $ f(\mathbf{q}, \mathcal{D}) $ (often implemented as scoring each document independently) that produces an ordering of documents, ideally with the most relevant first.
 
 Typical approach:
-- Compute feature vectors \( \mathbf{x}_{(\mathbf{q}, d)} \) for each query-document pair.
-- Predict scores \( s_i = f_\theta(\mathbf{x}_i) \).
+- Compute feature vectors $ \mathbf{x}_{(\mathbf{q}, d)} $ for each query-document pair.
+- Predict scores $ s_i = f_\theta(\mathbf{x}_i) $.
 - Sort documents by score.
 
 ---
@@ -291,15 +291,15 @@ See: [[ranking_metrics]]
 
 ### DCG and NDCG
 
-For truncation level \(T\), relevance labels \(l_i\):
+For truncation level $T$, relevance labels $l_i$:
 
-\[
+$$
 DCG@T = \sum_{i=1}^T \frac{2^{l_i}-1}{\log(1+i)}
-\]
+$$
 
-\[
+$$
 NDCG@T = \frac{DCG@T}{\max DCG@T}
-\]
+$$
 
 NDCG is widely used because it:
 - supports graded relevance
@@ -309,10 +309,10 @@ NDCG is widely used because it:
 
 ERR models a user scanning down the ranked list until satisfied:
 
-\[
+$$
 ERR = \sum_{r=1}^n \frac{1}{r} R_r \prod_{i=1}^{r-1}(1-R_i), \quad
 R_i = \frac{2^{l_i}-1}{2^{l_m}}
-\]
+$$
 
 ### Metrics for relevance filtering / truncation (new source)
 The new source focuses on a different evaluation problem: **filtering/truncating** the retrieved set to improve precision with minimal recall loss.
@@ -346,18 +346,18 @@ The existing page emphasizes a historically influential line of work led by Chri
 
 ### RankNet (pairwise cross-entropy)
 
-Model probability that \(d_i\) should rank above \(d_j\):
+Model probability that $d_i$ should rank above $d_j$:
 
-\[
+$$
 P_{ij} = \frac{1}{1+e^{-\sigma(s_i-s_j)}}
-\]
+$$
 
-Cost (cross entropy) with target \(\widetilde{P}_{ij}\):
+Cost (cross entropy) with target $\widetilde{P}_{ij}$:
 
-\[
+$$
 \mathcal{L}_{\text{RankNet}}(s_i,s_j)
 = -\widetilde{P}_{ij}\log P_{ij} - (1-\widetilde{P}_{ij})\log(1-P_{ij})
-\]
+$$
 
 ### ListNet (listwise via Plackett–Luce)
 
@@ -375,17 +375,17 @@ LambdaRank idea:
 
 For NDCG:
 
-\[
+$$
 \lambda_{ij} \equiv \frac{\partial \mathcal{C}}{\partial s_i}\cdot |\Delta NDCG_{ij}|
-\]
+$$
 
 with
 
-\[
+$$
 \Delta NDCG_{ij} =
 \frac{2^{l_j}-2^{l_i}}{\max DCG@T}
 \left(\frac{1}{\log(1+i)}-\frac{1}{\log(1+j)}\right)
-\]
+$$
 
 LambdaMART:
 - applies the same idea but uses boosted trees and performs gradient boosting in function space.

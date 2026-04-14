@@ -126,12 +126,12 @@ The new source specifically highlights **inner product** as the standard similar
 Exact nearest neighbor search over large corpora can be too slow and memory-intensive. The source text highlights a key practical point for **large-scale** search engines:
 
 - **Metric trees** (e.g., k‑d trees) are described as *not used* in large-scale search engines due to:
-  - slow behavior at scale despite the nominal \(O(\log n)\) complexity, and
+  - slow behavior at scale despite the nominal $O(\log n)$ complexity, and
   - large memory consumption.
 
-Instead, large systems use **Approximate Nearest Neighbor (ANN)** methods to achieve **close to \(O(1)\)** retrieval time in practice.
+Instead, large systems use **Approximate Nearest Neighbor (ANN)** methods to achieve **close to $O(1)$** retrieval time in practice.
 
-> Note: The “close to \(O(1)\)” claim reflects an engineering perspective and typical behavior of hashed/quantized ANN lookups, not a universal theoretical guarantee for all ANN methods and all distributions.
+> Note: The “close to $O(1)$” claim reflects an engineering perspective and typical behavior of hashed/quantized ANN lookups, not a universal theoretical guarantee for all ANN methods and all distributions.
 
 ---
 
@@ -152,15 +152,15 @@ These approaches trade exactness for speed by mapping vectors into codes/buckets
 
 ## Deep Metric Learning (DML) as a foundation for embedding quality (new)
 
-Many embedding models used for vector search can be viewed through the lens of **metric learning**: learning an embedding function \(f_\theta(x)\in\mathbb{R}^n\) such that distances/similarities in embedding space correspond to semantic similarity.
+Many embedding models used for vector search can be viewed through the lens of **metric learning**: learning an embedding function $f_\theta(x)\in\mathbb{R}^n$ such that distances/similarities in embedding space correspond to semantic similarity.
 
 From the new source (a DML survey), the supervised metric learning problem is described as choosing:
 
-- an embedding model \(f_\theta(\cdot)\) (feature extractor), and
-- a distance function \(\mathcal{D}(\cdot,\cdot)\) (often fixed, e.g., \(L_2\)),
+- an embedding model $f_\theta(\cdot)$ (feature extractor), and
+- a distance function $\mathcal{D}(\cdot,\cdot)$ (often fixed, e.g., $L_2$),
 
 so that:
-- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** when labels match,
+- $\mathcal{D}(f_\theta(x_1), f_\theta(x_2))$ is **small** when labels match,
 - and **large** when labels differ.
 
 ### Why this matters for vector search
@@ -171,13 +171,13 @@ so that:
   - how stable similarity scores are across classes/domains (e.g., long-tail, noisy labels, out-of-distribution queries).
 
 - DML objectives can implicitly choose which similarity metric is most appropriate at serving time:
-  - Many classic DML losses operate explicitly in **Euclidean (\(L_2\)) distance** space.
+  - Many classic DML losses operate explicitly in **Euclidean ($L_2$) distance** space.
   - Many modern “angular margin” losses operate on **cosine similarity** after normalization, aligning closely with cosine/dot-product-based ANN retrieval.
 
 **Mild tension / nuance with existing content (not a direct contradiction):**
 - The existing page emphasizes cosine/Euclidean as retrieval metrics and notes dot-product/MIPS for two-tower retrieval.
-- The new DML source emphasizes that many “direct” metric learning methods are typically defined in **\(L_2\)** space, while later “angular” methods explicitly normalize features and optimize **cosine/angular separation**.  
-  Reconciliation: both families ultimately produce embeddings that can be used in ANN; you should ensure the ANN metric (cosine vs \(L_2\) vs MIPS) matches the training objective and any normalization steps.
+- The new DML source emphasizes that many “direct” metric learning methods are typically defined in **$L_2$** space, while later “angular” methods explicitly normalize features and optimize **cosine/angular separation**.  
+  Reconciliation: both families ultimately produce embeddings that can be used in ANN; you should ensure the ANN metric (cosine vs $L_2$ vs MIPS) matches the training objective and any normalization steps.
 
 Cross-references:
 - Training/ranking pipeline context: [[learning_to_rank]]
@@ -186,13 +186,13 @@ Cross-references:
 
 ## Contrastive / “direct” metric learning losses (new)
 
-The DML survey describes early/common supervised metric learning approaches as “contrastive” (sometimes called “direct”), because they directly pull positives together and push negatives apart, typically under \(L_2\).
+The DML survey describes early/common supervised metric learning approaches as “contrastive” (sometimes called “direct”), because they directly pull positives together and push negatives apart, typically under $L_2$.
 
 ### Contrastive loss (pairwise)
 
-Given two samples \((x_1,y_1)\), \((x_2,y_2)\), distance \(\mathcal{D}\) (often \(L_2\)), and margin \(\alpha\):
+Given two samples $(x_1,y_1)$, $(x_2,y_2)$, distance $\mathcal{D}$ (often $L_2$), and margin $\alpha$:
 
-- Pull together same-label pairs via \(\mathcal{D}^2\)
+- Pull together same-label pairs via $\mathcal{D}^2$
 - Push apart different-label pairs by enforcing a margin
 
 Key practical note from the source:
@@ -201,12 +201,12 @@ Key practical note from the source:
 ### Triplet loss (anchor/positive/negative)
 
 Triplet loss uses:
-- anchor \(x_a\),
-- positive \(x_p\) (same label),
-- negative \(x_n\) (different label),
+- anchor $x_a$,
+- positive $x_p$ (same label),
+- negative $x_n$ (different label),
 
 and enforces:
-- anchor-positive closer than anchor-negative by a margin \(\alpha\).
+- anchor-positive closer than anchor-negative by a margin $\alpha$.
 
 #### Negative sample mining (important operational detail)
 
@@ -239,7 +239,7 @@ This is particularly relevant to vector search because:
 
 ### Center Loss (regularizing softmax features)
 
-The source describes **Center Loss** as augmenting standard softmax classification loss with an \(L_2\) penalty that pulls embeddings toward a per-class center \(c_{y_i}\).
+The source describes **Center Loss** as augmenting standard softmax classification loss with an $L_2$ penalty that pulls embeddings toward a per-class center $c_{y_i}$.
 
 Claimed benefits in the source:
 - Helps address the expansion issue by providing explicit centers.
@@ -249,19 +249,19 @@ Claimed benefits in the source:
 
 The source presents a progression of “angular margin” methods:
 
-- **SphereFace (2017):** introduces multiplicative angular margin but has optimization complications (non-monotonicity of cosine; margin depends on \(\theta\); requires piecewise tricks).
-- **CosFace (2018):** introduces an **additive cosine margin** with normalized features and weights; uses scale \(s\) and margin \(m\).
-- **ArcFace (2019):** introduces an **additive angular margin** in angle space; similar setup (normalized features/weights, scale \(s\), margin \(m\)); reported to slightly outperform CosFace in many benchmarks.
+- **SphereFace (2017):** introduces multiplicative angular margin but has optimization complications (non-monotonicity of cosine; margin depends on $\theta$; requires piecewise tricks).
+- **CosFace (2018):** introduces an **additive cosine margin** with normalized features and weights; uses scale $s$ and margin $m$.
+- **ArcFace (2019):** introduces an **additive angular margin** in angle space; similar setup (normalized features/weights, scale $s$, margin $m$); reported to slightly outperform CosFace in many benchmarks.
 
-#### Hyperparameters \(s\) (scale) and \(m\) (margin)
+#### Hyperparameters $s$ (scale) and $m$ (margin)
 
 The source emphasizes that for CosFace/ArcFace:
-- choosing \(s\) and \(m\) is crucial,
-- too small/large \(s\) can harm training dynamics and calibration of probabilities,
-- increasing \(m\) effectively enforces stricter separation (shifts probability curves).
+- choosing $s$ and $m$ is crucial,
+- too small/large $s$ can harm training dynamics and calibration of probabilities,
+- increasing $m$ effectively enforces stricter separation (shifts probability curves).
 
 It also cites **AdaCos** (2019) as proposing a heuristic fixed scaling:
-- \(\tilde{s} \approx \sqrt{2}\log(C-1)\) where \(C\) is the number of classes,
+- $\tilde{s} \approx \sqrt{2}\log(C-1)$ where $C$ is the number of classes,
 and notes (anecdotally in the blog) that “Adaptive AdaCos” is not commonly seen deployed successfully.
 
 **Connection to vector search serving:**
@@ -278,7 +278,7 @@ The source introduces two extensions:
   - motivation: a single center is a poor fit when intra-class variance is high and labels are noisy.
 
 - **ArcFace with Dynamic Margin (2020):**
-  - uses per-class margin \(m_i = a\cdot n_i^{-\lambda} + b\) based on class frequency \(n_i\),
+  - uses per-class margin $m_i = a\cdot n_i^{-\lambda} + b$ based on class frequency $n_i$,
   - motivation: extreme class imbalance; smaller classes may need larger margins.
 
 **Implication for retrieval embeddings:**

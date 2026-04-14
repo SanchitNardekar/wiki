@@ -110,9 +110,9 @@ Cross-reference: [[grpo]], [[reward_modeling]], [[training_stability]].
 Issue described:
 
 - A normalization term proportional to  
-  \[
+  $$
   \frac{1}{\mathrm{std}(\{R(q,o_1), \ldots, R(q,o_G)\})}
-  \]
+$$
   can bias training toward **very easy** or **very hard** prompts (where rewards collapse near all-1 or all-0).
 
 Mitigation (Dr. GRPO-style):
@@ -127,7 +127,7 @@ In RL fine-tuning, KL penalties constrain divergence from a reference policy.
 
 Notes from the case study:
 
-- GRPO uses **forward KL** \(D_{KL}(\pi_\theta \| \pi_\text{ref})\) (contrast: PPO often uses reverse KL in some RLHF implementations).
+- GRPO uses **forward KL** $D_{KL}(\pi_\theta \| \pi_\text{ref})$ (contrast: PPO often uses reverse KL in some RLHF implementations).
 - Reported: forward vs reverse KL made **negligible difference** in small experiments (1.5B), though others reported worse results with forward KL.
 - DAPO is described as going further and **removing KL entirely**, arguing that in long-CoT reasoning, models diverge enough that KL regularization may not help.
 

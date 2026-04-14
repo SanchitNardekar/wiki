@@ -175,27 +175,27 @@ Cross-reference: [[contrastive_learning]], [[infonce]].
 The paper introduces a lightweight module called **Cosine Adapter**:
 
 - Input: the **query embedding** produced by the frozen dual encoder.
-- Output: parameters **Θ** that define a **query-dependent** monotonic mapping function **FΘ(x)** applied to the raw cosine similarity \(x = \cos(q, p)\).
+- Output: parameters **Θ** that define a **query-dependent** monotonic mapping function **FΘ(x)** applied to the raw cosine similarity $x = \cos(q, p)$.
 - Filtering rule:
 
-\[
+$$
 \tilde{P_i} = \{p_j \mid F_{\Theta}(\cos(q_i, p_j)) \ge t\}
-\]
+$$
 
-where \(t\) is a **global threshold** learned/tuned offline.
+where $t$ is a **global threshold** learned/tuned offline.
 
 **Key design choices:**
 - Mapping functions are chosen to be **monotonic** to preserve ordering as much as possible (minimizing recall loss), while enabling calibration.
 - Several function families were explored:
-  - raw: \(F(x)=x\)
-  - linear: \(F(x)=ax+b\)
-  - square root: \(F(x)=\mathrm{sgn}(x)\,a\sqrt{|x|}+b\)
-  - quadratic: \(F(x)=\mathrm{sgn}(x)\,ax^2+b\)
-  - power: \(F(x)=\mathrm{sgn}(x)\,a|x|^k+b\), with \(k\in(0,2)\)
+  - raw: $F(x)=x$
+  - linear: $F(x)=ax+b$
+  - square root: $F(x)=\mathrm{sgn}(x)\,a\sqrt{|x|}+b$
+  - quadratic: $F(x)=\mathrm{sgn}(x)\,ax^2+b$
+  - power: $F(x)=\mathrm{sgn}(x)\,a|x|^k+b$, with $k\in(0,2)$
 
 **Training objective:**
 - Train adapter with **binary cross-entropy** on relevance labels:
-  - interpret \(\sigma(F)\) as the probability the pair is relevant.
+  - interpret $\sigma(F)$ as the probability the pair is relevant.
 - **Dual encoder is frozen** during adapter training.
 - Adapter may be trained on a **different dataset** than the dual encoder (e.g., dual encoder trained on engagement logs; adapter trained on human judgments).
 
@@ -205,9 +205,9 @@ Cross-reference: [[calibration]] (if it exists), [[dual_encoder]].
 
 At inference time:
 
-- Adapter feed-forward cost: \(O(d^2)\) per query (run once), where \(d\) is embedding dimension.
-- Score mapping cost: \(O(K)\) (a few ops per candidate).
-- Compared to ranked list truncation approaches using self-attention over candidates (e.g., Choppy-style), which can be \(O(K^2 d)\), this is much cheaper.
+- Adapter feed-forward cost: $O(d^2)$ per query (run once), where $d$ is embedding dimension.
+- Score mapping cost: $O(K)$ (a few ops per candidate).
+- Compared to ranked list truncation approaches using self-attention over candidates (e.g., Choppy-style), which can be $O(K^2 d)$, this is much cheaper.
 
 This fits multi-stage pipelines as an “in-between” stage that improves end-to-end system efficiency by reducing candidates early.
 
@@ -345,17 +345,17 @@ The source notes that MAP and MRR are widely used for retrieval but are less pre
 
 For cutoff **T**, DCG is:
 
-\[
+$$
 DCG@T = \sum_{i=1}^{T} \frac{2^{l_i} - 1}{\log(1+i)}
-\]
+$$
 
 and
 
-\[
+$$
 NDCG@T = \frac{DCG@T}{\max DCG@T}
-\]
+$$
 
-where \(l_i\) is the relevance label of the document at rank \(i\).
+where $l_i$ is the relevance label of the document at rank $i$.
 
 Cross-reference: [[ndcg]], [[dcg]], [[err]], [[mrr]], [[map]].
 
@@ -369,9 +369,9 @@ Multi-stage pipelines often use a **cheap model early** (e.g., linear/GBDT) and 
 
 - Models probability that document i should rank above j:
 
-\[
+$$
 P_{ij}=\frac{1}{1+e^{-\sigma(s_i-s_j)}}
-\]
+$$
 
 - Optimizes cross-entropy on pairwise preferences.
 
@@ -388,5 +388,5 @@ Cross-reference: [[listnet]].
 
 Problem: metrics like NDCG/ERR are not directly differentiable due to sorting.
 
-- **LambdaRank** modifies gradients by weighting pairwise updates with the magnitude of metric change (e.g., \(|\Delta NDCG_{ij}|\)) if two documents swap positions.
+- **LambdaRank** modifies gradients by weighting pairwise updates with the magnitude of metric change (e.g., $|\Delta NDCG_{ij}|$) if two documents swap positions.
 - **LambdaMART** combines LambdaRank’s idea with gradient boosted decision trees (“Multiple Additive Regression Trees”).

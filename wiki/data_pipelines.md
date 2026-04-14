@@ -105,7 +105,7 @@ In original GRPO, advantage normalization includes a scaling term based on rewar
 
 ### KL regularization uncertainty
 Discussion points:
-- GRPO uses **forward KL** \(D_{KL}(\pi_\theta \| \pi_{ref})\) rather than PPO’s reverse KL.
+- GRPO uses **forward KL** $D_{KL}(\pi_\theta \| \pi_{ref})$ rather than PPO’s reverse KL.
 - Experiments reported negligible differences in some settings.
 - DAPO argues KL can be removed entirely for long-CoT because the model diverges enough that regularization may not help.
 

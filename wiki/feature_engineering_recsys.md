@@ -129,9 +129,9 @@ LTR treats ranking as learning a function that scores items for a query (or user
 
 A standard representation is:
 
-- For each query–document pair \((q, d)\), compute a feature vector \(\mathbf{x}_{d}\)
-- A model \(f_\theta(\cdot)\) outputs a score \(s_i = f_\theta(\mathbf{x}_i)\)
-- Items are sorted by \(s_i\)
+- For each query–document pair $(q, d)$, compute a feature vector $\mathbf{x}_{d}$
+- A model $f_\theta(\cdot)$ outputs a score $s_i = f_\theta(\mathbf{x}_i)$
+- Items are sorted by $s_i$
 
 Common LTR models consume:
 
@@ -154,10 +154,10 @@ Ranking metrics used in information retrieval (and many RecSys ranking evaluatio
 
 ### NDCG definition (for graded relevance)
 
-For truncation \(T\) and label \(l_i\) at rank \(i\):
+For truncation $T$ and label $l_i$ at rank $i$:
 
-- \(DCG@T = \sum_{i=1}^T \frac{2^{l_i} - 1}{\log(1+i)}\)
-- \(NDCG@T = \frac{DCG@T}{\max DCG@T}\)
+- $DCG@T = \sum_{i=1}^T \frac{2^{l_i} - 1}{\log(1+i)}$
+- $NDCG@T = \frac{DCG@T}{\max DCG@T}$
 
 **Practical implication for features:** if you optimize or evaluate with NDCG/ERR, feature engineering should prioritize signals that disambiguate the *top few results* (e.g., better semantic match, better quality signals, better personalization/context).
 
@@ -222,7 +222,7 @@ Even the best ranking features cannot help if retrieval fails to include relevan
 - retrieval often uses a **hybrid** of:
   - keyword/entity matching (inverted index) and
   - embedding-based retrieval (vector index)
-- approximate nearest neighbors (ANN) is typically used for scalability (aiming for near \(O(1)\) retrieval behavior in practice vs. slow exact methods at scale)
+- approximate nearest neighbors (ANN) is typically used for scalability (aiming for near $O(1)$ retrieval behavior in practice vs. slow exact methods at scale)
 
 Feature engineering for retrieval includes:
 

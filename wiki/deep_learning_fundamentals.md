@@ -145,7 +145,7 @@ Goal: introduce cross-tower interaction information *without fully coupling infe
 
 Approach:
 - Augment each tower’s input with a vector that captures **historical positive interaction information from the other tower**
-  - e.g., add vectors \(a_u\) and \(a_v\) to user and item tower inputs
+  - e.g., add vectors $a_u$ and $a_v$ to user and item tower inputs
 - These augmentation vectors are updated during training to model cross-tower information.
 - Adds a **category alignment loss** to address category imbalance by transferring knowledge from data-rich categories to sparse ones.
 
@@ -225,14 +225,14 @@ Examples mentioned:
 The two-tower retrieval framing is closely related to **deep metric learning**: learning an embedding space where “similar” entities are near and “dissimilar” entities are far.
 
 - **Goal (supervised DML):**
-  - Learn an embedding model \( f_\theta: \mathcal{X} \rightarrow \mathbb{R}^n \)
-  - Choose a distance/similarity function \( \mathcal{D} \) (often fixed)
+  - Learn an embedding model $ f_\theta: \mathcal{X} \rightarrow \mathbb{R}^n $
+  - Choose a distance/similarity function $ \mathcal{D} $ (often fixed)
   - Ensure:
-    - small \( \mathcal{D}(f_\theta(x_1), f_\theta(x_2)) \) when \(y_1=y_2\)
-    - large \( \mathcal{D}(f_\theta(x_1), f_\theta(x_2)) \) when \(y_1\neq y_2\)
+    - small $ \mathcal{D}(f_\theta(x_1), f_\theta(x_2)) $ when $y_1=y_2$
+    - large $ \mathcal{D}(f_\theta(x_1), f_\theta(x_2)) $ when $y_1\neq y_2$
 
 - **Common distances/similarities:**
-  - Euclidean / \(l_2\) distance (classic metric learning formulation)
+  - Euclidean / $l_2$ distance (classic metric learning formulation)
   - Cosine similarity / angular distance (common in angular-margin methods)
 
 **Connection to retrieval systems:**
@@ -250,10 +250,10 @@ Many embedding systems are trained by directly enforcing “pull positives toget
 
 ### Contrastive loss (pairwise)
 
-A classic objective over pairs \((x_1, x_2)\) with margin \(\alpha\):
+A classic objective over pairs $(x_1, x_2)$ with margin $\alpha$:
 
-- If \(y_1=y_2\): minimize squared distance \( \mathcal{D}^2(f(x_1), f(x_2)) \)
-- If \(y_1\neq y_2\): enforce a margin via \( \max(0, \alpha - \mathcal{D}^2(\cdot)) \)
+- If $y_1=y_2$: minimize squared distance $ \mathcal{D}^2(f(x_1), f(x_2)) $
+- If $y_1\neq y_2$: enforce a margin via $ \max(0, \alpha - \mathcal{D}^2(\cdot)) $
 
 Motivation for the margin:
 - prevents a degenerate solution where all embeddings collapse to a single point.
@@ -262,24 +262,24 @@ Motivation for the margin:
 
 ### Triplet loss
 
-Uses triples \((x_a, x_p, x_n)\) with \(y_a=y_p\), \(y_a\neq y_n\):
+Uses triples $(x_a, x_p, x_n)$ with $y_a=y_p$, $y_a\neq y_n$:
 
-\[
+$$
 \mathcal{L}_\text{triplet} = \max(0, \mathcal{D}^2(a,p) - \mathcal{D}^2(a,n) + \alpha)
-\]
+$$
 
 Key practical ingredient: **negative mining**
 - sample “hard” or “semi-hard” negatives where
-  \[
+  $$
   \mathcal{D}(a,n) < \mathcal{D}(a,p) + \alpha
-  \]
+$$
 - without mining, gradients can become sparse late in training (many triplets yield zero loss).
 
 > Related: [[negative_sampling]], [[metric_learning]]
 
 ### Known issues with direct distance-based objectives (as summarized in the new source)
 
-The new source highlights two recurring problems when optimizing directly in \(l_2\) space:
+The new source highlights two recurring problems when optimizing directly in $l_2$ space:
 
 - **Expansion issue:** difficult to ensure all samples of a class collapse into a coherent global region (local constraints may not enforce global structure).
 - **Sampling issue:** performance depends heavily on mining strategies, which becomes operationally awkward at scale (e.g., distributed training).
@@ -294,11 +294,11 @@ The new source explicitly notes that **softmax cross-entropy** can be used for m
 
 ### Center loss (softmax + center regularizer)
 
-Adds a term pulling embeddings toward learned class centers \(c_{y_i}\):
+Adds a term pulling embeddings toward learned class centers $c_{y_i}$:
 
-\[
+$$
 \mathcal{L}_\text{center} = \mathcal{L}_\text{softmax} + \frac{\lambda}{2}\sum_i \lVert z_i - c_{y_i}\rVert_2^2
-\]
+$$
 
 Claimed benefits (per source):
 - mitigates the *expansion issue* by providing explicit class centers
@@ -316,34 +316,34 @@ Limitations noted conceptually in the source’s progression:
 A major trend in supervised deep metric learning (especially face recognition and instance retrieval benchmarks) is learning embeddings on a **hypersphere**, using **angular margins** to increase inter-class separation and reduce intra-class variance.
 
 Common setup for these losses:
-- normalize classifier weights: \(\|W_j\|=1\)
-- normalize embeddings/features: \(\|z\|=1\)
-- often set bias \(b=0\)
-- use a **scale** parameter \(s\) to keep softmax gradients well-conditioned
+- normalize classifier weights: $\|W_j\|=1$
+- normalize embeddings/features: $\|z\|=1$
+- often set bias $b=0$
+- use a **scale** parameter $s$ to keep softmax gradients well-conditioned
 
 ### SphereFace (multiplicative angular margin)
 
-- Introduces a multiplicative angular margin \(\mu\) by replacing \(\cos(\theta)\) with \(\cos(\mu\theta)\).
-- New source notes optimization complications due to cosine non-monotonicity and dependence of the effective margin on \(\theta\), motivating later variants.
+- Introduces a multiplicative angular margin $\mu$ by replacing $\cos(\theta)$ with $\cos(\mu\theta)$.
+- New source notes optimization complications due to cosine non-monotonicity and dependence of the effective margin on $\theta$, motivating later variants.
 
 ### CosFace (additive cosine margin)
 
-Adds an additive margin \(m\) in cosine space:
+Adds an additive margin $m$ in cosine space:
 
-\[
+$$
 \mathcal{L}_\text{CosFace} = -\frac{1}{N}\sum_i \log \frac{\exp(s(\cos\theta_{y_i}-m))}{\exp(s(\cos\theta_{y_i}-m)) + \sum_{j\neq y_i}\exp(s\cos\theta_j)}
-\]
+$$
 
 Notes from the source:
-- choosing \(s\) and \(m\) is important; \(s\) should not be too small (can’t reach confident probabilities) or too large (won’t penalize mistakes).
+- choosing $s$ and $m$ is important; $s$ should not be too small (can’t reach confident probabilities) or too large (won’t penalize mistakes).
 
 ### ArcFace (additive angular margin)
 
-Defines the margin in angle space by using \(\cos(\theta + m)\):
+Defines the margin in angle space by using $\cos(\theta + m)$:
 
-\[
+$$
 \mathcal{L}_\text{ArcFace} = -\frac{1}{N}\sum_i \log \frac{\exp(s\cos(\theta_{y_i}+m))}{\exp(s\cos(\theta_{y_i}+m)) + \sum_{j\neq y_i}\exp(s\cos\theta_j)}
-\]
+$$
 
 Source claim:
 - ArcFace is “very similar” to CosFace, but tends to be **slightly better** across benchmarks in reported results.
@@ -360,7 +360,7 @@ Motivation:
 - A single center per class can be too restrictive when intra-class variance is high or labels are noisy.
 
 Idea:
-- each class has \(K\) sub-centers \(\{W_{j,1}\dots W_{j,K}\}\)
+- each class has $K$ sub-centers $\{W_{j,1}\dots W_{j,K}\}$
 - use the closest sub-center for computing the effective angle
 
 Benefit claimed:
@@ -372,10 +372,10 @@ Motivation:
 - extreme class imbalance (long tail) can cause poor convergence for rare classes.
 
 Proposed rule (per source):
-\[
+$$
 m_i = a\cdot n_i^{-\lambda} + b
-\]
-- rarer classes (smaller \(n_i\)) get larger margins.
+$$
+- rarer classes (smaller $n_i$) get larger margins.
 
 > Related: [[class_imbalance]], [[long_tail_distributions]]
 
@@ -393,7 +393,7 @@ The new source summarizes empirical practices from Kaggle-style large-scale retr
 - **Post-processing often matters in retrieval:**
   - metric learning alone may not be sufficient; solutions often use query expansion and verification/matching steps
 - **Hyperparameters differ by modality:**
-  - optimal \((s,m)\) may differ for image vs text models.
+  - optimal $(s,m)$ may differ for image vs text models.
 
 Operationally, this fits the broader retrieval theme:
 - embedding learning is only part of the system; indexing, ANN, and downstream heuristics matter too.
@@ -419,7 +419,7 @@ Operationally, this fits the broader retrieval theme:
 
 ### 1) “InfoNCE-style contrastive loss” vs “move away from contrastive approaches”
 - **Existing page:** IntTower’s CIR module uses an **InfoNCE-style contrastive loss** as a helpful regularizer.
-- **New source:** argues that in *supervised deep metric learning*, the field “moved away” from direct \(l_2\)-contrastive / triplet-style objectives due to **sampling** and **expansion** issues, favoring **angular-margin** softmax-style objectives (ArcFace/CosFace).
+- **New source:** argues that in *supervised deep metric learning*, the field “moved away” from direct $l_2$-contrastive / triplet-style objectives due to **sampling** and **expansion** issues, favoring **angular-margin** softmax-style objectives (ArcFace/CosFace).
 
 This is not a strict contradiction, but it is a **contextual tension**:
 - In retrieval/pre-ranking, InfoNCE-style objectives can be effective and scalable with

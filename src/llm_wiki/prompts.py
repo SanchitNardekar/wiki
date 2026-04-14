@@ -38,6 +38,7 @@ CRITICAL RULES:
 3. Note contradictions between new and existing information explicitly.
 4. Use clear markdown with headings and bullet points.
 5. Return markdown body only — no YAML front matter.
+6. Use $...$ for inline math and $$...$$ for block equations. Never use \\(...\\) or \\[...\\] delimiters.
 
 {existing_section}
 

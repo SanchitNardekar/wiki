@@ -179,7 +179,7 @@ Infra implications:
 
 ### 3) Do we need KL regularization?
 Notes from source:
-- GRPO uses **forward KL** \(D_KL(π_θ || π_ref)\) (vs PPO’s reverse KL in some RLHF setups).
+- GRPO uses **forward KL** $D_KL(π_θ || π_ref)$ (vs PPO’s reverse KL in some RLHF setups).
 - Some experiments reported negligible difference, while DAPO argues to remove KL entirely for long-CoT reasoning because the policy diverges enough that regularization may not help.
 
 Infra implications:

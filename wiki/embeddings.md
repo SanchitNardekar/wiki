@@ -125,14 +125,14 @@ Cross-references: [[dense-retrieval]], [[hybrid-retrieval]], [[knowledge-graphs]
 The source highlights a systems/scaling point:
 
 - Metric trees (e.g., k-d trees) are typically **not used** in large-scale search engines due to:
-  - “slow \(O(\log n)\) complexity” and
+  - “slow $O(\log n)$ complexity” and
   - “large memory consumption.”
-- Instead, **Approximate Nearest Neighbors (ANN)** methods (e.g., “LHS or PCA hashing”) are used to achieve “close to \(O(1)\)” retrieval complexity.
+- Instead, **Approximate Nearest Neighbors (ANN)** methods (e.g., “LHS or PCA hashing”) are used to achieve “close to $O(1)$” retrieval complexity.
 
 Cross-references: [[approximate-nearest-neighbors]], [[nearest-neighbor-search]], [[vector-index]].
 
 **Note/possible contradiction to flag (preserved):**  
-The claim that k-d trees are avoided because \(O(\log n)\) is “slow” and that ANN is “close to \(O(1)\)” is a high-level engineering statement. In practice, ANN methods typically provide *sublinear* expected query time with strong constant-factor tradeoffs and hardware/system optimizations; strict \(O(1)\) is not generally guaranteed. This page preserves the source phrasing but notes that complexity is often workload- and implementation-dependent.
+The claim that k-d trees are avoided because $O(\log n)$ is “slow” and that ANN is “close to $O(1)$” is a high-level engineering statement. In practice, ANN methods typically provide *sublinear* expected query time with strong constant-factor tradeoffs and hardware/system optimizations; strict $O(1)$ is not generally guaranteed. This page preserves the source phrasing but notes that complexity is often workload- and implementation-dependent.
 
 ### New: Precision control, truncation, and “no natural cutoff” in dense retrieval
 Dense retrieval often returns a fixed top-*K* from ANN search. The new source emphasizes:
@@ -219,36 +219,36 @@ Key observations from the source:
 Cross-references: [[dense-retrieval]], [[contrastive-learning]], [[learning-to-rank]].
 
 ### Approach: query-dependent monotonic mapping of cosine scores
-They propose learning a function that transforms raw cosine similarity \(x=\cos(q,p)\in[-1,1]\) into an interpretable relevance score:
+They propose learning a function that transforms raw cosine similarity $x=\cos(q,p)\in[-1,1]$ into an interpretable relevance score:
 
-\[
+$$
 \tilde{P}_i = \{p_j \mid F_{\Theta}( \cos(q_i,p_j)) \ge t \}
-\]
+$$
 
-- \(F_\Theta(\cdot)\): **monotonic** mapping to preserve the relative order of candidates (minimizing disruption to recall).
-- \(\Theta\): **query-dependent parameters** predicted from the **query embedding**.
-- \(t\): a **global threshold** tuned offline.
+- $F_\Theta(\cdot)$: **monotonic** mapping to preserve the relative order of candidates (minimizing disruption to recall).
+- $\Theta$: **query-dependent parameters** predicted from the **query embedding**.
+- $t$: a **global threshold** tuned offline.
 
 This component is called the **Cosine Adapter**:
 - Input: query embedding (from the frozen dual encoder).
-- Output: parameters \(\Theta\) for the chosen mapping function \(F\).
+- Output: parameters $\Theta$ for the chosen mapping function $F$.
 - Training: binary classification objective (binary cross entropy) to predict relevance probability after a sigmoid:
-  - \(F\) outputs a logit; \(\sigma(F)\) is treated as \(P(\text{relevant}\mid q,p)\).
+  - $F$ outputs a logit; $\sigma(F)$ is treated as $P(\text{relevant}\mid q,p)$.
 
 Cross-references: [[representation-learning]], [[information-retrieval]].
 
 ### Mapping function family (calibration functions)
 They explore several monotonic transformation families:
 
-- Raw: \(F(x)=x\)
-- Linear: \(F(x\mid a,b)=ax+b\)
-- Square root: \(F(x\mid a,b)=\operatorname{sgn}(x)\,a\sqrt{|x|}+b\)
-- Quadratic: \(F(x\mid a,b)=\operatorname{sgn}(x)\,a x^2+b\)
-- Power: \(F(x\mid a,b,k)=\operatorname{sgn}(x)\,a|x|^k+b,\quad k\in(0,2)\)
+- Raw: $F(x)=x$
+- Linear: $F(x\mid a,b)=ax+b$
+- Square root: $F(x\mid a,b)=\operatorname{sgn}(x)\,a\sqrt{|x|}+b$
+- Quadratic: $F(x\mid a,b)=\operatorname{sgn}(x)\,a x^2+b$
+- Power: $F(x\mid a,b,k)=\operatorname{sgn}(x)\,a|x|^k+b,\quad k\in(0,2)$
 
 Important serving property:
-- Adapter compute is **once per query** (to produce \(\Theta\)), plus **\(O(K)\)** per candidate list to compute calibrated scores.
-- The paper contrasts this to list-truncation methods that do self-attention over candidates with **\(O(K^2 d)\)** complexity.
+- Adapter compute is **once per query** (to produce $\Theta$), plus **$O(K)$** per candidate list to compute calibrated scores.
+- The paper contrasts this to list-truncation methods that do self-attention over candidates with **$O(K^2 d)$** complexity.
 
 Cross-references: [[neural-networks]] (if present), [[search]].
 
@@ -284,25 +284,25 @@ Cross-references: [[evaluation-metrics]] (if present), [[information-retrieval]]
 
 ## Deep metric learning (DML) as a lens on embeddings (new)
 
-A complementary view of embeddings—especially common in **visual search** and some retrieval settings—is **Deep Metric Learning**: learning an embedding function \(f_\theta(\cdot)\) such that *distances in embedding space* reflect label-based similarity.
+A complementary view of embeddings—especially common in **visual search** and some retrieval settings—is **Deep Metric Learning**: learning an embedding function $f_\theta(\cdot)$ such that *distances in embedding space* reflect label-based similarity.
 
 ### Supervised metric learning problem setting
-Given data points \(\mathcal{X}\), labels \(\mathcal{Y}\) (finite discrete set), an embedding network:
+Given data points $\mathcal{X}$, labels $\mathcal{Y}$ (finite discrete set), an embedding network:
 
-- \(f_\theta: \mathcal{X} \to \mathbb{R}^n\)
+- $f_\theta: \mathcal{X} \to \mathbb{R}^n$
 
-and a (usually fixed) distance \(\mathcal{D}: \mathbb{R}^n \to \mathbb{R}\), train so that:
+and a (usually fixed) distance $\mathcal{D}: \mathbb{R}^n \to \mathbb{R}$, train so that:
 
-- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** when \(y_1=y_2\)
-- and **large** when \(y_1\neq y_2\)
+- $\mathcal{D}(f_\theta(x_1), f_\theta(x_2))$ is **small** when $y_1=y_2$
+- and **large** when $y_1\neq y_2$
 
-This perspective connects directly to retrieval: nearest neighbors under \(\mathcal{D}\) define candidate matches.
+This perspective connects directly to retrieval: nearest neighbors under $\mathcal{D}$ define candidate matches.
 
 Cross-references: [[representation-learning]], [[information-retrieval]], [[nearest-neighbor-search]].
 
 ### Distances used: Euclidean vs cosine (and normalization)
 The DML survey emphasizes:
-- “Direct” contrastive approaches commonly use **\(L_2\) (Euclidean) distance**.
+- “Direct” contrastive approaches commonly use **$L_2$ (Euclidean) distance**.
 - More recent “angular margin” approaches operate in **cosine/angle space** by:
   - normalizing feature vectors (embeddings) to unit length and
   - normalizing classifier weights (class prototypes), then
@@ -320,9 +320,9 @@ Cross-references: [[contrastive-learning]].
 Embeddings are shaped primarily by the **training objective**. In retrieval systems, these objectives are often formulated as pairwise/listwise ranking losses (see [[learning-to-rank]]) or contrastive objectives (see [[contrastive-learning]]). In supervised metric learning, they are often expressed directly in terms of distances/margins.
 
 ### Contrastive loss (pairwise)
-Classic contrastive loss (Chopra et al., 2005) for two samples \((x_1,x_2)\):
+Classic contrastive loss (Chopra et al., 2005) for two samples $(x_1,x_2)$:
 
-\[
+$$
 \mathcal{L}_\text{contrast}
 =
 \mathbb{1}_{y_1 = y_2} \, \mathcal{D}^2(f_\theta(x_1), f_\theta(x_2))

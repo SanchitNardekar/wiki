@@ -86,23 +86,23 @@ Common ranking quality metrics include:
 
 For truncation level **T**:
 
-\[
+$$
 DCG@T = \sum_{i=1}^{T} \frac{2^{l_i}-1}{\log(1+i)}
-\]
+$$
 
-\[
+$$
 NDCG@T = \frac{DCG@T}{\max DCG@T}
-\]
+$$
 
 - **lᵢ** is the relevance label at rank i (graded).
 - NDCG is in **[0, 1]** due to normalization.
 
 ### ERR recap (user stops when satisfied)
 
-\[
+$$
 ERR = \sum_{r=1}^n \frac{1}{r} R_{r} \prod_{i=1}^{r-1} (1-R_i), \quad
 R_i = \frac{2^{l_i}-1}{2^{l_m}}
-\]
+$$
 
 ### Key optimization issue
 
@@ -129,9 +129,9 @@ RankNet reframes ranking as a pairwise probabilistic preference learning problem
 
 ### Pairwise probability model
 
-\[
+$$
 P_{ij} = P(d_i \rhd d_j) = \frac{1}{1 + e^{-\sigma (s_i - s_j)}}
-\]
+$$
 
 - **σ** controls sigmoid steepness.
 
@@ -139,10 +139,10 @@ Let **\~Pᵢⱼ** be the target probability that i should rank above j (e.g., fr
 
 ### RankNet cross-entropy loss
 
-\[
+$$
 \mathcal{L}_{\text{RankNet}}(s_i, s_j) =
 - \widetilde{P}_{ij}\log P_{ij} - (1-\widetilde{P}_{ij})\log(1-P_{ij})
-\]
+$$
 
 Properties highlighted:
 
@@ -159,21 +159,21 @@ ListNet is a listwise approach that defines a distribution over documents using 
 
 ### Top-1 Plackett–Luce probability
 
-\[
+$$
 P_\theta(d_i^q \mid \mathcal{D}^q) =
 \frac{\exp[f_\theta(d_i^q)]}{\sum_{j=1}^n \exp[f_\theta(d_j^q)]}
-\]
+$$
 
 ### ListNet cross-entropy loss (top-1 version shown in the source)
 
-\[
+$$
 \mathcal{L}_{\text{ListNet}}(s^q, y^q)
 = -\sum_{i=1}^n
 \frac{\exp[y_i^q]}{\sum_{j=1}^n \exp[y_j^q]}
 \log \left(
 \frac{\exp[f_\theta(d_i^q)]}{\sum_{j=1}^n \exp[f_\theta(d_j^q)]}
 \right)
-\]
+$$
 
 Intuition:
 
@@ -193,27 +193,27 @@ The source explicitly notes a limitation:
 
 ### Core idea: “lambdas” weighted by metric change
 
-Start from the RankNet gradient term \(\lambda_{ij} = \partial \mathcal{C}/\partial s_i\) and then reweight it by the **absolute change** in a target metric if i and j swap positions.
+Start from the RankNet gradient term $\lambda_{ij} = \partial \mathcal{C}/\partial s_i$ and then reweight it by the **absolute change** in a target metric if i and j swap positions.
 
 For NDCG:
 
-\[
+$$
 \lambda_{ij} \equiv \frac{\partial \mathcal{C}}{\partial s_i}\cdot |\Delta NDCG_{ij}|
-\]
+$$
 
 Where:
 
-\[
+$$
 \Delta NDCG_{ij} =
 \frac{2^{l_j}-2^{l_i}}{\max DCG@T}
 \left(
 \frac{1}{\log(1+i)}-\frac{1}{\log(1+j)}
 \right)
-\]
+$$
 
 Computational note (from the source):
 
-- Computing \(\Delta NDCG_{ij}\) for all pairs is **O(n²)**.
+- Computing $\Delta NDCG_{ij}$ for all pairs is **O(n²)**.
 - A naive ERR swap-change computation can be **O(n³)**, but there are tricks (Burges, 2010) to reduce to **O(n²)**.
 
 ### LambdaMART
@@ -265,9 +265,9 @@ This underscores a theme: **features matter** greatly, and training a strong ran
 
 The new source focuses on **two-tower (dual-encoder / bi-encoder)** models as a common choice for **pre-ranking** (and sometimes retrieval) because they separate representation learning and scoring:
 
-- Compute a query/user embedding \(u\) and a document/item embedding \(v\) **independently**
+- Compute a query/user embedding $u$ and a document/item embedding $v$ **independently**
 - Score with a cheap similarity, often **inner product**:
-  - \(s(u,v) = u^\top v\)
+  - $s(u,v) = u^\top v$
 
 This “late interaction”/decoupled design enables:
 - precomputing and indexing document/item embeddings (fast inference)
@@ -352,47 +352,47 @@ The source highlights a specific reason calibration is needed:
 
 The paper restates two common dual-encoder objectives (useful for this page because they connect optimization choices to score calibration issues):
 
-#### In-batch contrastive / InfoNCE-style loss (per query \(q_i\))
+#### In-batch contrastive / InfoNCE-style loss (per query $q_i$)
 
-\[
+$$
 \text{loss}_i = - \log \frac{\exp(\cos(q_i,p_i)/\tau)}
 {\exp(\cos(q_i,p_i)/\tau) + \sum_{j\in N}\exp(\cos(q_i,p_j)/\tau)}
-\]
+$$
 
-- \(p_i\) is the positive passage/product for query \(q_i\)
-- \(N\) are in-batch negatives
-- \(\tau\) is temperature
+- $p_i$ is the positive passage/product for query $q_i$
+- $N$ are in-batch negatives
+- $\tau$ is temperature
 
 Cross-reference: [[contrastive_learning]].
 
-#### Softmax listwise loss over candidate set \(P_i\)
+#### Softmax listwise loss over candidate set $P_i$
 
-\[
+$$
 \text{loss}_i = -\sum_{j\in P_i} y_{ij}\;
 \log\frac{\exp(\cos(q_i,p_j)/\tau)}{\sum_{j\in P_i}\exp(\cos(q_i,p_j)/\tau)}
-\]
+$$
 
-- \(y_{ij}\) are predefined labels (can be graded)
+- $y_{ij}$ are predefined labels (can be graded)
 - Still fundamentally shapes **relative** scores, not absolute calibration
 
 **Interpretation in this wiki’s framing:** These are listwise/contrastive objectives for *embedding retrieval*, but they are not directly optimizing a rank metric like [[ndcg]]—and they do not inherently yield **cross-query comparable scores**.
 
 ### Cosine Adapter: query-dependent monotonic calibration of cosine similarity
 
-The **Cosine Adapter** is a small neural module that takes the **query embedding** as input and outputs parameters \(\Theta\) for a **monotonic transformation** \(F_\Theta(\cdot)\) that maps cosine similarity \(x \in [-1,1]\) to a calibrated logit.
+The **Cosine Adapter** is a small neural module that takes the **query embedding** as input and outputs parameters $\Theta$ for a **monotonic transformation** $F_\Theta(\cdot)$ that maps cosine similarity $x \in [-1,1]$ to a calibrated logit.
 
 Filtering is then:
 
-\[
+$$
 \tilde{P}_i = \{p_j \mid F_\Theta(\cos(q_i,p_j)) \ge t\}
-\]
+$$
 
-- \(\Theta\) is **query-dependent** (computed once per query)
-- \(t\) is a **global threshold** tuned offline
+- $\Theta$ is **query-dependent** (computed once per query)
+- $t$ is a **global threshold** tuned offline
 
-**Important design constraint:** \(F\) is chosen monotonic to preserve the ANN ranking order as much as possible (minimizing recall impact).
+**Important design constraint:** $F$ is chosen monotonic to preserve the ANN ranking order as much as possible (minimizing recall impact).
 
 The paper explores several mapping families (baseline plus parameterized shapes):
 
-- Raw: \(F(x)=x\)
-- Linear: \(F(x\mid a,b)=ax
+- Raw: $F(x)=x$
+- Linear: $F(x\mid a,b)=ax

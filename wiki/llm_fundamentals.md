@@ -116,7 +116,7 @@ Cross-references:
 ### 5.3 Do we even need KL regularization?
 Source discussion highlights:
 
-- GRPO uses **forward KL** \(D_{KL}(\pi_\theta\|\pi_{\text{ref}})\), while PPO often uses **reverse KL**.
+- GRPO uses **forward KL** $D_{KL}(\pi_\theta\|\pi_{\text{ref}})$, while PPO often uses **reverse KL**.
 - Empirical observations in the source are mixed:
   - Some report forward KL worse
   - The author’s experiments found negligible difference on at least one smaller model

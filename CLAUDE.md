@@ -17,6 +17,7 @@ wiki/.meta/     ← Schema + embeddings. Human manages schema.json.
 3. **Cross-references use `[[slug]]` notation.** Slugs are lowercase alphanumeric with underscores/hyphens.
 4. **Provenance is always tracked.** Every page's front matter `sources:` field must list all contributing sources.
 5. **The schema is the page universe.** Never create pages for slugs not in schema.json.
+6. **Equations use $ delimiters.** Inline math uses `$...$`, block math uses `$$...$$`. Never use `\(...\)` or `\[...\]`.
 
 ## Front Matter Schema
 

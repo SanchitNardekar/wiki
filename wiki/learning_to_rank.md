@@ -45,7 +45,7 @@ Modern search engines can be abstracted into:
   - Combine keyword matching + embeddings (and sometimes knowledge-graph-based query expansion).
 
 **Scalability note (from source):**
-- Exact metric trees (e.g., k‑d trees) are typically *not* used at web scale due to computational/memory constraints; **Approximate Nearest Neighbor (ANN)** search is used to get close to \(O(1)\) retrieval time.
+- Exact metric trees (e.g., k‑d trees) are typically *not* used at web scale due to computational/memory constraints; **Approximate Nearest Neighbor (ANN)** search is used to get close to $O(1)$ retrieval time.
 
 ---
 
@@ -53,17 +53,17 @@ Modern search engines can be abstracted into:
 
 Given:
 
-- a query \( \mathbf{q} \)
-- a set of \(n\) retrieved documents \( \mathcal{D} = \{d_1, \dots, d_n\} \)
+- a query $ \mathbf{q} $
+- a set of $n$ retrieved documents $ \mathcal{D} = \{d_1, \dots, d_n\} $
 
-we want to learn a ranking function \(f(\mathbf{q}, \mathcal{D})\) that returns an ordering where the top items are most relevant. Often the model computes a **score** for each document (given query-dependent features), and sorting by score yields the ranking.
+we want to learn a ranking function $f(\mathbf{q}, \mathcal{D})$ that returns an ordering where the top items are most relevant. Often the model computes a **score** for each document (given query-dependent features), and sorting by score yields the ranking.
 
 Common notation (as used in the source’s supervised-LTR section):
 
-- \( \mathbf{x}_d \): feature vector for a query–document pair \((\mathbf{q}, d)\)
-- \( f_\theta(\cdot) \): model with parameters \(\theta\) (neural net or gradient-boosted trees)
-- \( s_i = f_\theta(\mathbf{x}_i) \): predicted score for document \(d_i\)
-- \( d_i \rhd d_j \): document \(d_i\) should rank above \(d_j\)
+- $ \mathbf{x}_d $: feature vector for a query–document pair $(\mathbf{q}, d)$
+- $ f_\theta(\cdot) $: model with parameters $\theta$ (neural net or gradient-boosted trees)
+- $ s_i = f_\theta(\mathbf{x}_i) $: predicted score for document $d_i$
+- $ d_i \rhd d_j $: document $d_i$ should rank above $d_j$
 
 ---
 
@@ -125,27 +125,27 @@ Common information retrieval metrics mentioned:
 
 ### DCG and NDCG
 
-For truncation level \(T\) and label \(l_i\) at rank \(i\):
+For truncation level $T$ and label $l_i$ at rank $i$:
 
-\[
+$$
 DCG@T = \sum_{i=1}^T \frac{2^{l_i} - 1}{\log(1+i)}
-\]
+$$
 
-\[
+$$
 NDCG@T = \frac{DCG@T}{\max DCG@T}
-\]
-where \(\max DCG@T\) is the DCG of the ideally sorted list, ensuring \(NDCG@T \in [0,1]\).
+$$
+where $\max DCG@T$ is the DCG of the ideally sorted list, ensuring $NDCG@T \in [0,1]$.
 
 ### ERR (Expected Reciprocal Rank)
 
 ERR models a user scanning results from top to bottom until they find a satisfactory result:
 
-\[
+$$
 ERR = \sum_{r=1}^n \frac{1}{r} R_r \prod_{i=1}^{r-1}(1-R_i)
 ,\quad
 R_i = \frac{2^{l_i}-1}{2^{l_m}}
-\]
-where \(l_m\) is the maximum label level.
+$$
+where $l_m$ is the maximum label level.
 
 ---
 
@@ -163,17 +163,17 @@ The source claims LambdaMART remains a strong baseline and can outperform newer 
 
 RankNet models pairwise preference probability using a sigmoid over score differences:
 
-\[
+$$
 P_{ij} = P(d_i \rhd d_j) = \frac{1}{1 + e^{-\sigma(s_i - s_j)}}
-\]
+$$
 
-Given a “target” probability \(\widetilde{P}_{ij}\) (e.g., from judge agreement), RankNet uses cross-entropy:
+Given a “target” probability $\widetilde{P}_{ij}$ (e.g., from judge agreement), RankNet uses cross-entropy:
 
-\[
+$$
 \mathcal{L}_{\text{RankNet}}(s_i,s_j) =
 -\widetilde{P}_{ij}\log P_{ij}
 -(1-\widetilde{P}_{ij})\log(1-P_{ij})
-\]
+$$
 
 **Historical note (from source):**
 - The RankNet paper received the ICML Test of Time Best Paper Award (in 2015).
@@ -182,12 +182,12 @@ Given a “target” probability \(\widetilde{P}_{ij}\) (e.g., from judge agreem
 
 ListNet is presented as a listwise approach using a Plackett–Luce style distribution:
 
-\[
+$$
 P_\theta(d_i \mid \mathcal{D}^\mathbf{q}) =
 \frac{\exp[f_\theta(d_i^\mathbf{q})]}{\sum_{j=1}^n \exp[f_\theta(d_j^\mathbf{q})]}
-\]
+$$
 
-Probability of sampling a permutation \(\pi\) is expressed as a product over sequential choices from the remaining set. The ListNet loss is defined as cross-entropy between the label-induced distribution and the model-induced distribution over documents.
+Probability of sampling a permutation $\pi$ is expressed as a product over sequential choices from the remaining set. The ListNet loss is defined as cross-entropy between the label-induced distribution and the model-induced distribution over documents.
 
 ### LambdaRank and LambdaMART (optimizing metric-sensitive objectives)
 
@@ -197,23 +197,23 @@ Probability of sampling a permutation \(\pi\) is expressed as a product over seq
 
 For NDCG:
 
-\[
+$$
 \lambda_{ij} \equiv \frac{\partial \mathcal{C}}{\partial s_i}\cdot |\Delta NDCG_{ij}|
-\]
+$$
 
 with:
 
-\[
+$$
 \Delta NDCG_{ij} =
 \frac{2^{l_j} - 2^{l_i}}{\max DCG@T}
 \left(
 \frac{1}{\log(1+i)} - \frac{1}{\log(1+j)}
 \right)
-\]
+$$
 
 **Complexity note (from source):**
-- Computing \(\Delta NDCG\) for all pairs is \(O(n^2)\).
-- Naive \(\Delta ERR\) across all pairs can be \(O(n^3)\), but can be reduced to \(O(n^2)\) via tricks described in Burges (2010).
+- Computing $\Delta NDCG$ for all pairs is $O(n^2)$.
+- Naive $\Delta ERR$ across all pairs can be $O(n^3)$, but can be reduced to $O(n^2)$ via tricks described in Burges (2010).
 
 **LambdaMART:**
 - Uses gradient-boosted decision trees (“MART”: Multiple Additive Regression Trees) rather than neural networks.
@@ -268,25 +268,25 @@ The source highlights a long-standing question: whether LambdaRank corresponds t
 
 ## LambdaLoss framework (Wang et al., 2019)
 
-**Idea:** Treat the ranked list/permutation \(\pi\) as a latent variable and define likelihood of observing labels \( \mathbf{y} \) given scores \( \mathbf{s} \) by marginalizing over permutations:
+**Idea:** Treat the ranked list/permutation $\pi$ as a latent variable and define likelihood of observing labels $ \mathbf{y} $ given scores $ \mathbf{s} $ by marginalizing over permutations:
 
-\[
+$$
 P(\mathbf{y}\mid \mathbf{s}) = \sum_{\pi\in \Pi} P(\mathbf{y}\mid \mathbf{s},\pi)P(\pi\mid \mathbf{s})
-\]
+$$
 
 Loss is negative log-likelihood:
 
-\[
+$$
 \mathcal{L}(\mathbf{y},\mathbf{s}) = -\log \sum_{\pi\in\Pi} P(\mathbf{y}\mid \mathbf{s},\pi)P(\pi\mid \mathbf{s})
-\]
+$$
 
 The source explains this as analogous to classification: optimize differentiable log-likelihood rather than a non-differentiable evaluation metric.
 
 ### Recovering RankNet and LambdaRank-style objectives
 
-- If \(P(\mathbf{y}\mid \mathbf{s},\pi)\) is defined via a Bradley–Terry model independent of \(\pi\), the objective reduces to a RankNet-like pairwise logistic loss.
+- If $P(\mathbf{y}\mid \mathbf{s},\pi)$ is defined via a Bradley–Terry model independent of $\pi$, the objective reduces to a RankNet-like pairwise logistic loss.
 - To incorporate rank sensitivity (e.g., NDCG-like gain/discount), the source gives a modified pairwise likelihood exponent weighted by gain and discount differences.
-- A distribution over rankings \(P(\pi\mid \mathbf{s})\) can be derived by adding noise to scores (Taylor et al., 2008); the LambdaLoss paper uses a **hard assignment** (limit as noise → 0) to reduce computational cost.
+- A distribution over rankings $P(\pi\mid \mathbf{s})$ can be derived by adding noise to scores (Taylor et al., 2008); the LambdaLoss paper uses a **hard assignment** (limit as noise → 0) to reduce computational cost.
 
 ---
 
@@ -298,19 +298,19 @@ The source structures this section using (and crediting) a lecture by Oosterhuis
 
 ### Setup (click-based learning assumptions)
 
-- It can be more appropriate to talk about a **query instance** \(\mathcal{q}\) that includes user context, not only a raw query string.
+- It can be more appropriate to talk about a **query instance** $\mathcal{q}$ that includes user context, not only a raw query string.
 - Relevance labels are often treated as **binary** in click models (relevant or not), though graded relevance exists in human labeling.
 
 Notations used in the source:
 
-- \(\mathcal{q}\): user query instance (query + context)
-- \(\pi_\theta^{\mathcal{q}}\): ranking produced by model \(f_\theta\)
-- \(\pi_\theta^{\mathcal{q}}(d)\): rank position of document \(d\)
-- \(y_d^{\mathcal{q}}\): true (unobserved) relevance
-- \(o_d^{\mathcal{q}}\): whether relevance was observed (examination/observation indicator)
-- \(c_d^{\mathcal{q}}\): click indicator
-- \(\Delta(\mathbf{y}^{\mathcal{q}}, \pi_\theta^{\mathcal{q}})\): a linearly decomposable IR metric (NDCG, MRR, MAP, etc.)
-- \(\mu(r)\): rank weighting function inside \(\Delta\)
+- $\mathcal{q}$: user query instance (query + context)
+- $\pi_\theta^{\mathcal{q}}$: ranking produced by model $f_\theta$
+- $\pi_\theta^{\mathcal{q}}(d)$: rank position of document $d$
+- $y_d^{\mathcal{q}}$: true (unobserved) relevance
+- $o_d^{\mathcal{q}}$: whether relevance was observed (examination/observation indicator)
+- $c_d^{\mathcal{q}}$: click indicator
+- $\Delta(\mathbf{y}^{\mathcal{q}}, \pi_\theta^{\mathcal{q}})$: a linearly decomposable IR metric (NDCG, MRR, MAP, etc.)
+- $\mu(r)$: rank weighting function inside $\Delta$
 
 ### Click signal biases
 
@@ -334,12 +334,12 @@ The source introduces counterfactual LTR as learning/evaluating from historical 
 
 Core idea:
 
-- **Counterfactual evaluation:** evaluate a new ranking function \(f_\theta\) using interaction data collected under a previously deployed ranking function \(f_{\text{deploy}}\).
+- **Counterfactual evaluation:** evaluate a new ranking function $f_\theta$ using interaction data collected under a previously deployed ranking function $f_{\text{deploy}}$.
 
 Terminology mapping (from the unbiased LTR literature):
 
-- \(f_{\text{deploy}}\): **behavior policy** (a “policy” that generated the logged data)
-- \(f_\theta\): **evaluation policy** (the candidate ranker being evaluated)
+- $f_{\text{deploy}}$: **behavior policy** (a “policy” that generated the logged data)
+- $f_\theta$: **evaluation policy** (the candidate ranker being evaluated)
 
 > **Note:** The provided source text cuts off mid-sentence during this section, so details like IPS estimators, click models (PBM/DBN), intervention/randomization strategies, and typical counterfactual objectives are not included in the excerpt. This page should be extended once additional sources are provided.
 

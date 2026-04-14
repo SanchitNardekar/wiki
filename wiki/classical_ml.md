@@ -41,7 +41,7 @@ Modern search engines and many recommender systems follow a multi-stage pipeline
 
 ## Learning to Rank (LTR) as a “classical ML” family
 
-**Learning to Rank** learns a scoring function \(f(\mathbf{q}, d)\) (often written \(f_\theta(\mathbf{x}_{q,d})\)) that assigns a score to each document \(d\) for a query \(\mathbf{q}\); sorting by score gives the ranked list.
+**Learning to Rank** learns a scoring function $f(\mathbf{q}, d)$ (often written $f_\theta(\mathbf{x}_{q,d})$) that assigns a score to each document $d$ for a query $\mathbf{q}$; sorting by score gives the ranked list.
 
 - In many systems, LTR is the *final* stage that produces the list shown to the user (closely tied to [[recommendation_systems]] and [[information_retrieval]]).
 - LTR models are commonly implemented with:
@@ -97,22 +97,22 @@ Common offline ranking metrics include:
 
 - **NDCG (Normalized Discounted Cumulative Gain)** — most common in graded relevance ranking  
   Define truncated DCG:
-  \[
-  DCG@T = \sum_{i=1}^T \frac{2^{l_i} - 1}{\log(1+i)}
-  \]
+  $$
+  $DCG@T = \sum_{i=1}^T \frac{2^{l_i} - 1}{\log(1+i)}$
+$$
   and normalize:
-  \[
-  NDCG@T = \frac{DCG@T}{\max DCG@T}
-  \]
-  where \(l_i\) is the graded relevance label at rank \(i\).
+  $$
+  $NDCG@T = \frac{DCG@T}{\max DCG@T}$
+$$
+  where $l_i$ is the graded relevance label at rank $i$.
 
 - **ERR (Expected Reciprocal Rank)**
   Models a user scanning results top-down until satisfied:
-  \[
+  $$
   ERR = \sum_{r=1}^n \frac{1}{r} R_r \prod_{i=1}^{r-1}(1-R_i), \quad
   R_i = \frac{2^{l_i}-1}{2^{l_m}}
-  \]
-  where \(l_m\) is the maximum label value.
+$$
+  where $l_m$ is the maximum label value.
 
 See also: [[metrics]] (if present), [[information_retrieval]].
 
@@ -123,18 +123,18 @@ See also: [[metrics]] (if present), [[information_retrieval]].
 A historically influential sequence of “classical” LTR methods came from Microsoft Research work (Burges et al.):
 
 ### RankNet (pairwise; Burges et al. 2005)
-RankNet models the probability that document \(i\) should rank above document \(j\) using a sigmoid on score differences:
+RankNet models the probability that document $i$ should rank above document $j$ using a sigmoid on score differences:
 
-\[
+$$
 P_{ij} = \frac{1}{1+e^{-\sigma (s_i - s_j)}}
-\]
+$$
 
-Given target preference probability \(\widetilde{P}_{ij}\), optimize cross-entropy:
+Given target preference probability $\widetilde{P}_{ij}$, optimize cross-entropy:
 
-\[
+$$
 \mathcal{L}_{\text{RankNet}}(s_i, s_j) =
 - \widetilde{P}_{ij}\log P_{ij} - (1-\widetilde{P}_{ij})\log(1-P_{ij})
-\]
+$$
 
 Connections to classical ML:
 - Equivalent in spirit to **pairwise logistic regression** on score differences — see [[logistic_regression]].
@@ -150,9 +150,9 @@ Problem: metrics like **NDCG/ERR are non-differentiable** because ranking requir
 LambdaRank idea:
 - Start from RankNet-like pairwise gradients.
 - Reweight the gradient contributions by the **absolute change in the target metric** caused by swapping two documents:
-  \[
+  $$
   \lambda_{ij} \propto \frac{\partial \mathcal{C}}{\partial s_i}\cdot |\Delta NDCG_{ij}|
-  \]
+$$
 - This prioritizes corrections near the top ranks (position-sensitive).
 
 **LambdaMART**:
@@ -207,11 +207,11 @@ Operational takeaway from the source:
 ### Counterfactual evaluation framing
 Counterfactual LTR often uses the “policy” language:
 
-- **Behavior policy** \(f_{\text{deploy}}\): the ranker that produced the logged data.
-- **Evaluation policy** \(f_\theta\): the candidate ranker being evaluated/trained from the logs.
+- **Behavior policy** $f_{\text{deploy}}$: the ranker that produced the logged data.
+- **Evaluation policy** $f_\theta$: the candidate ranker being evaluated/trained from the logs.
 
 Goal:
-- Estimate performance of \(f_\theta\) using data collected under \(f_{\text{deploy}}\), correcting for bias (see [[counterfactual_learning]]).
+- Estimate performance of $f_\theta$ using data collected under $f_{\text{deploy}}$, correcting for bias (see [[counterfactual_learning]]).
 
 ---
 
@@ -231,19 +231,19 @@ Reported/mentioned results:
 
 The source introduces **LambdaLoss**, a framework that provides a more explicit probabilistic interpretation:
 
-- Treat the ranked list \(\pi\) as a latent variable.
+- Treat the ranked list $\pi$ as a latent variable.
 - Define likelihood of labels given scores by marginalizing over permutations:
-  \[
+  $$
   P(\mathbf{y}\mid \mathbf{s}) = \sum_{\pi \in \Pi} P(\mathbf{y}\mid \mathbf{s}, \pi)\,P(\pi\mid \mathbf{s})
-  \]
+$$
 - Optimize negative log-likelihood:
-  \[
+  $$
   \mathcal{L}(\mathbf{y}, \mathbf{s}) = -\log P(\mathbf{y}\mid \mathbf{s})
-  \]
-- Can be optimized via an EM-like process conceptually (E-step over \(\pi\), M-step updating model parameters).
+$$
+- Can be optimized via an EM-like process conceptually (E-step over $\pi$, M-step updating model parameters).
 
 Key connection stated:
-- Under particular choices of likelihood and a “hard assignment” approximation for \(P(\pi\mid \mathbf{s})\), **LambdaRank can be viewed as an EM procedure optimizing a LambdaLoss objective**.
+- Under particular choices of likelihood and a “hard assignment” approximation for $P(\pi\mid \mathbf{s})$, **LambdaRank can be viewed as an EM procedure optimizing a LambdaLoss objective**.
 
 This positions LambdaLoss as a unifying way to derive metric-aware ranking losses (particularly for NDCG-like gain/discount structure).
 

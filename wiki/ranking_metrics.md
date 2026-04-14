@@ -43,7 +43,7 @@ In web search and recommender/search stacks, evaluation is typically aligned to 
 
 ### 1.1) Ranking in “embedding retrieval” (metric learning) settings
 
-The new source (a Deep Metric Learning survey) describes systems where we learn an embedding model \(f_\theta(x)\) and rank candidates by a distance/similarity \(\mathcal{D}(f_\theta(q), f_\theta(d))\). This covers:
+The new source (a Deep Metric Learning survey) describes systems where we learn an embedding model $f_\theta(x)$ and rank candidates by a distance/similarity $\mathcal{D}(f_\theta(q), f_\theta(d))$. This covers:
 - image retrieval and reverse image search,
 - product matching / dedup,
 - face identification,
@@ -52,7 +52,7 @@ The new source (a Deep Metric Learning survey) describes systems where we learn 
 In these pipelines, “ranking evaluation” still means “put the best matches at the top”, but:
 - labels are often **class identity** (“same instance/class?”) rather than graded topical relevance,
 - evaluation is frequently **top-K retrieval** oriented (e.g., rank-1 accuracy, Recall@K, mAP),
-- the ranking function may be **distance in embedding space** (e.g., \(l_2\) or cosine similarity) rather than a learned scoring function over rich query-document features.
+- the ranking function may be **distance in embedding space** (e.g., $l_2$ or cosine similarity) rather than a learned scoring function over rich query-document features.
 
 This is relevant to [[search_architecture]] because many modern systems use:
 - a *retrieval stage* (ANN / vector search) and then
@@ -81,7 +81,7 @@ The new source (a post on improving DeepSeek-R1-distilled math reasoning models)
 - For each problem (query), sample many candidate solutions (“rollouts”, “traces”) from a model.
 - Evaluate:
   - **Pass@1**: fraction of problems where a *single sample* is correct (akin to “best-of-1”).
-  - **Maj@K**: majority-vote accuracy after sampling \(K\) candidates (common is **Maj@32**).
+  - **Maj@K**: majority-vote accuracy after sampling $K$ candidates (common is **Maj@32**).
 
 This resembles ranking evaluation because:
 - you have a **set of candidates** and must apply an **aggregation/selection policy** (majority vote; or in other setups, reranking by score/reward),
@@ -120,35 +120,35 @@ NDCG is one of the most common metrics for ranked lists with **graded relevance*
 
 ### 3.1) DCG definition
 
-For a query, the **Discounted Cumulative Gain** at truncation level \(T\) is:
+For a query, the **Discounted Cumulative Gain** at truncation level $T$ is:
 
-\[
+$$
 DCG@T = \sum_{i=1}^T \frac{2^{l_i} - 1}{\log (1 + i)}
-\]
+$$
 
 Where:
-- \(T\) = truncation level (e.g., 10 for “first page” evaluation)
-- \(l_i\) = relevance label/grade for the item at rank \(i\) (e.g., 0–4, or 1–5)
+- $T$ = truncation level (e.g., 10 for “first page” evaluation)
+- $l_i$ = relevance label/grade for the item at rank $i$ (e.g., 0–4, or 1–5)
 
 **Interpretation**
-- \(2^{l_i}-1\) is a **gain** function: higher grades contribute exponentially more.
-- \(\log(1+i)\) is a **discount** function: lower ranks contribute less.
+- $2^{l_i}-1$ is a **gain** function: higher grades contribute exponentially more.
+- $\log(1+i)$ is a **discount** function: lower ranks contribute less.
 
 ### 3.2) NDCG normalization
 
 NDCG normalizes DCG by the *maximum achievable DCG* for that query:
 
-\[
+$$
 NDCG@T = \frac{DCG@T}{\max DCG@T}
-\]
+$$
 
 So:
-- \(NDCG@T \in [0, 1]\)
-- \(1\) means a perfect ordering (at least up to truncation \(T\))
+- $NDCG@T \in [0, 1]$
+- $1$ means a perfect ordering (at least up to truncation $T$)
 
 **Practical notes**
 - Because of normalization, NDCG is more comparable across queries with different label distributions.
-- A “bad” ranking can still have non-zero NDCG if it contains some relevant documents in the top \(T\).
+- A “bad” ranking can still have non-zero NDCG if it contains some relevant documents in the top $T$.
 
 ---
 
@@ -158,19 +158,19 @@ ERR models a user who scans results top-down and stops when they find a satisfyi
 
 The metric is:
 
-\[
+$$
 ERR = \sum_{r=1}^n \frac{1}{r} R_{r} \prod_{i=1}^{r-1} \left( 1 - R_i \right),
 \quad \text{where} \quad
 R_i = \frac{2^{l_i} - 1}{2^{l_m}}
-\]
+$$
 
 Where:
-- \(R_i\) represents the probability the user finds the result at rank \(i\) relevant/satisfying
-- \(l_m\) is the maximum possible label value
+- $R_i$ represents the probability the user finds the result at rank $i$ relevant/satisfying
+- $l_m$ is the maximum possible label value
 
 **Interpretation**
 - High-grade results early increase ERR substantially.
-- The product term \(\prod_{i<r}(1-R_i)\) captures the probability the user has *not* already been satisfied earlier.
+- The product term $\prod_{i<r}(1-R_i)$ captures the probability the user has *not* already been satisfied earlier.
 
 ---
 
@@ -198,7 +198,7 @@ These metrics are conceptually compatible with IR ranking evaluation; the main d
 
 The CIKM’24 dense retrieval source reframes an important nuance:
 
-- In dense retrieval, choosing \(K\) is not just an evaluation cutoff; it can be an *operational candidate-set size* sent to reranking.
+- In dense retrieval, choosing $K$ is not just an evaluation cutoff; it can be an *operational candidate-set size* sent to reranking.
 - Because ANN always returns a top-K list, systems often need an explicit **relevance filtering** step that decides which retrieved items are “relevant enough” to keep.
 
 This introduces additional evaluation questions beyond Recall@K:
@@ -216,11 +216,11 @@ Cross-reference: retrieval → filtering → reranking as a pipeline design choi
 The DeepSeek-R1 math source uses evaluation metrics that behave like “@K” cutoffs, but in **sample space** rather than document space:
 
 - **Pass@1**: correctness of one draw (one rollout).
-- **Maj@K (e.g., Maj@32)**: sample \(K\) candidate answers and take the majority vote.
+- **Maj@K (e.g., Maj@32)**: sample $K$ candidate answers and take the majority vote.
 
 Important implications (ranking-metric-style “cutoff sensitivity”):
-- Changing \(K\) changes what you measure: *single-sample quality* vs *self-consistency under sampling*.
-- There is a **compute budget** not only in number of samples \(K\), but also in **token budget / max generation length** per sample.
+- Changing $K$ changes what you measure: *single-sample quality* vs *self-consistency under sampling*.
+- There is a **compute budget** not only in number of samples $K$, but also in **token budget / max generation length** per sample.
 
 ---
 
@@ -280,7 +280,7 @@ Cross-reference: [[unbiased_learning_to_rank]]
 
 ### 7.2) Counterfactual evaluation (policy evaluation)
 
-Counterfactual evaluation estimates the quality of a **new ranking function** \(f_\theta\) using interaction data logged under an **old/deployed** ranker \(f_{\text{deploy}}\).
+Counterfactual evaluation estimates the quality of a **new ranking function** $f_\theta$ using interaction data logged under an **old/deployed** ranker $f_{\text{deploy}}$.
 
 Terminology often used:
 - Deployed ranker = **behavior policy**
@@ -313,7 +313,7 @@ Cross-reference: [[learning_to_rank]]
 From the metric learning source’s “case study” framing (large-scale retrieval competitions), a common real-world pattern is:
 
 - **Stage A: embedding retrieval**
-  - Train an embedding model \(f_\theta\); retrieve candidates via nearest neighbors.
+  - Train an embedding model $f_\theta$; retrieve candidates via nearest neighbors.
   - Evaluate with top-K retrieval metrics (Recall@K, rank-1, mAP).
 - **Stage B: post-processing / re-ranking**
   - Apply query expansion, verification, or local feature matching (in vision), or other re-ranking logic.
