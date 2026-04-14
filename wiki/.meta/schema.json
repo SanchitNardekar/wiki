@@ -1,15 +1,40 @@
 {
-  "name": "ML Wiki",
+  "name": "Staff ML/AI Engineer Wiki",
   "pages": [
-    {
-      "slug": "learning_to_rank",
-      "title": "Learning to Rank",
-      "description": "ML methods for ranking items by relevance"
-    },
-    {
-      "slug": "information_retrieval",
-      "title": "Information Retrieval",
-      "description": "Search and retrieval of relevant documents"
-    }
+    {"slug": "learning_to_rank", "title": "Learning to Rank", "description": "LambdaMART, RankNet, pointwise/pairwise/listwise approaches"},
+    {"slug": "recommendation_systems", "title": "Recommendation Systems", "description": "Collaborative filtering, content-based, hybrid approaches"},
+    {"slug": "two_tower_architecture", "title": "Two-Tower Architecture", "description": "Industry standard dual-encoder for retrieval and pre-ranking"},
+    {"slug": "multi_stage_ranking", "title": "Multi-Stage Ranking Pipelines", "description": "Retrieval to L1 to L2 to re-ranking funnel and latency budgets"},
+    {"slug": "search_and_retrieval", "title": "Search and Information Retrieval", "description": "BM25, TF-IDF, inverted indexes, query understanding"},
+    {"slug": "vector_search", "title": "Vector Search and ANN", "description": "HNSW, FAISS, ScaNN, approximate nearest neighbors at scale"},
+    {"slug": "ranking_metrics", "title": "Ranking Metrics and Evaluation", "description": "NDCG, MAP, MRR, precision at k, offline vs online evaluation"},
+    {"slug": "feature_engineering_recsys", "title": "Feature Engineering for RecSys", "description": "User and item features, interaction features, real-time computation"},
+    {"slug": "cold_start_problem", "title": "Cold Start Problem", "description": "New user and item strategies, exploration vs exploitation"},
+    {"slug": "embeddings", "title": "Embeddings and Representation Learning", "description": "Dense vector representations for retrieval, similarity, and transfer"},
+    {"slug": "transformer_architecture", "title": "Transformer Architecture", "description": "Attention, self-attention, positional encoding, encoder-decoder"},
+    {"slug": "deep_learning_fundamentals", "title": "Deep Learning Fundamentals", "description": "Backprop, optimization, regularization, CNN, RNN architectures"},
+    {"slug": "classical_ml", "title": "Classical ML Algorithms", "description": "Trees, SVMs, ensembles, XGBoost, LightGBM for production ranking"},
+    {"slug": "experiment_design", "title": "Experiment Design and A/B Testing", "description": "Causal inference, statistical significance, online experiments"},
+    {"slug": "loss_functions_and_optimization", "title": "Loss Functions and Optimization", "description": "Cross-entropy, contrastive loss, SGD variants, learning rate schedules"},
+    {"slug": "llm_fundamentals", "title": "LLM Fundamentals", "description": "Architecture, pretraining, tokenization, scaling laws"},
+    {"slug": "rag_systems", "title": "Retrieval-Augmented Generation", "description": "Combining search and retrieval with LLM generation"},
+    {"slug": "llm_fine_tuning", "title": "LLM Fine-Tuning", "description": "LoRA, QLoRA, PEFT, parameter-efficient adaptation"},
+    {"slug": "llm_evaluation", "title": "LLM Evaluation", "description": "RAGAS, LLM-as-judge, production eval pipelines"},
+    {"slug": "prompt_engineering", "title": "Prompt Engineering", "description": "Structured prompting, chain-of-thought, tool use patterns"},
+    {"slug": "ml_system_design", "title": "ML System Design", "description": "End-to-end design of production ML systems at scale"},
+    {"slug": "mlops", "title": "MLOps and ML Infrastructure", "description": "CI/CD for ML, model registries, experiment tracking"},
+    {"slug": "feature_stores", "title": "Feature Stores", "description": "Online and offline serving, consistency, Feast and Tecton patterns"},
+    {"slug": "model_serving", "title": "Model Serving and Inference", "description": "TorchServe, Triton, latency optimization, batching strategies"},
+    {"slug": "data_pipelines", "title": "Data Pipelines", "description": "Batch and streaming with Spark, Flink, Airflow, data quality"},
+    {"slug": "monitoring_and_observability", "title": "ML Monitoring and Observability", "description": "Drift detection, model degradation, alerting"},
+    {"slug": "python_engineering", "title": "Python Engineering", "description": "Production Python, typing, async, packaging, testing"},
+    {"slug": "typescript_engineering", "title": "TypeScript Engineering", "description": "Full-stack capability, type safety, frontend and backend"},
+    {"slug": "distributed_systems", "title": "Distributed Systems", "description": "Consensus, partitioning, CAP theorem, replication"},
+    {"slug": "system_design_fundamentals", "title": "System Design Fundamentals", "description": "Load balancing, caching, databases, API design"},
+    {"slug": "algorithms_and_data_structures", "title": "Algorithms and Data Structures", "description": "Core CS for interviews and production problem solving"},
+    {"slug": "technical_leadership", "title": "Technical Leadership", "description": "Cross-team influence, architectural ownership, mentoring"},
+    {"slug": "ml_strategy", "title": "ML Strategy and Problem Framing", "description": "When to use ML vs rules, scoping, measuring business impact"},
+    {"slug": "math_foundations", "title": "Math Foundations for ML", "description": "Linear algebra, probability, statistics, calculus"},
+    {"slug": "ethics_and_responsible_ai", "title": "Ethics and Responsible AI", "description": "Bias, fairness, safety, and governance"}
   ]
 }
