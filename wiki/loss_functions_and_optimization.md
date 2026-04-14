@@ -3,6 +3,7 @@ slug: loss_functions_and_optimization
 sources:
 - hav4ik.github.io
 - blog.reachsumit.com
+- relevance_filtering_for_embedding_based_retrieval.pdf
 tags: []
 title: Loss Functions and Optimization
 updated: '2026-04-14'
@@ -303,93 +304,95 @@ Reported conclusion (Dong et al., 2022, per source summary):
 
 > Note: This is task- and setup-dependent; treat it as an empirical observation reported in the source, not a universal law.
 
-### Interaction-enhanced two-tower models add auxiliary losses (contrastive + logloss)
-
-The source highlights a common limitation of pure two-tower models:
-- **Lack of information interaction between towers** (because embeddings are learned mostly independently)
-
-Proposed extensions introduce additional interaction modules and **additional losses**.
-
-#### IntTower: combining supervised classification loss + contrastive regularization
-
-The source describes an “Interaction Enhanced Two Tower Model (IntTower)” which combines:
-- Feature refinement (Light-SE block inspired by SENet)
-- Early/fine-grained feature interactions (FE-block inspired by ColBERT’s interaction style)
-- **Contrastive Interaction Regularization (CIR)** using **InfoNCE** loss
-
-Training objective (as described at a high level in the source):
-- combine **logloss** (binary cross-entropy on predicted score vs label) **+** an **InfoNCE** contrastive loss that pulls user/query closer to positive items than negatives
-
-Cross-references:
-- [[contrastive_learning]] (for InfoNCE-style losses)
-- [[cross_entropy]] (for “logloss” / BCE)
-- [[information_retrieval]] (for pre-ranking vs ranking)
-
-##### InfoNCE (conceptual form)
-
-While the source does not give a full equation, the commonly used InfoNCE form for an anchor \(u\), positive \(v^+\), and negatives \(\{v_k^-\}\) is:
-
-\[
-\mathcal{L}_{\text{InfoNCE}}(u, v^+) =
-- \log \frac{\exp(\text{sim}(u, v^+)/\tau)}
-{\exp(\text{sim}(u, v^+)/\tau) + \sum_k \exp(\text{sim}(u, v_k^-)/\tau)}
-\]
-
-- \(\text{sim}\) is often dot product or cosine similarity
-- \(\tau\) is a temperature parameter
-
-**How this connects to ranking**:
-- InfoNCE encourages **relative ordering** (positive above negatives) in embedding similarity space, which indirectly improves retrieval/pre-ranking quality.
-- This is conceptually aligned with pairwise ranking (positives vs negatives), but implemented as a multi-negative softmax.
-
 ---
 
-## Deep Metric Learning losses as ranking-friendly objectives (Contrastive/Triplet/Margin-Softmax)
+## Extension: controlling precision in embedding-based retrieval via relevance filtering (Cosine Adapter)
 
-The new source (“Deep Metric Learning: a (Long) Survey”, Chan Kha Vu, 2021) adds a complementary view: many retrieval / pre-ranking systems can be trained using **deep metric learning (DML)** objectives that directly shape the embedding geometry.
+**New source (Rossi et al., CIKM 2024)** emphasizes a practical issue in embedding-based retrieval and pre-ranking: dense retrieval systems often maximize **recall**, but **low precision** can harm UX—especially in **product search** where queries may have **few truly relevant items**.
 
-This section does **not replace** LTR listwise methods (e.g., LambdaMART). Instead, it explains a commonly used objective family for **embedding-based retrieval and pre-ranking** in [[information_retrieval]] stacks.
+Key points:
 
-Cross-references:
-- [[contrastive_learning]] (general contrastive family; InfoNCE and beyond)
-- [[learning_to_rank]] (where these fit relative to pairwise/listwise LTR)
+- ANN-based dense retrieval has **no natural cutoff** analogous to lexical keyword matching; you always get top‑K neighbors even if most are irrelevant.
+- Raw **cosine similarity** values are often:
+  - **hard to interpret** as absolute relevance, and
+  - **not comparable across queries**, because dual encoders are typically trained to get correct *relative ordering* within a query context, not calibrated absolute scores.
+- Relying on:
+  - a fixed **top‑K**, or
+  - a global **cosine similarity threshold**
+  is often insufficient for filtering irrelevant results.
 
-### Problem setting (supervised metric learning)
+Cross-references: [[information_retrieval]], [[learning_to_rank]], [[ranking_metrics]].
 
-Given labeled samples \(x \in \mathcal{X}\) with discrete labels \(y \in \mathcal{Y}\), train an embedding model:
+### Contradiction / tension with some common practice
+
+- **Common heuristic**: “Apply a global cosine threshold to dense retrieval scores.”
+- **New source claim**: cosine scores “should not be compared across different queries,” so a global threshold on raw cosine is generally **suboptimal**.
+
+This does not strictly contradict the existing page (which did not claim cosine is calibrated), but it **explicitly challenges** a widely used operational shortcut.
+
+### Position in a cascade: retrieval → (filter) → re-ranking
+
+Rossi et al. propose inserting a lightweight **relevance filtering** step after ANN retrieval and before re-ranking:
+
+1. Dual encoder produces query embedding and document embeddings; ANN retrieves top‑K with cosine scores.
+2. **Cosine Adapter** maps cosine scores into **interpretable, query-comparable relevance probabilities/logits**.
+3. Apply a **single global threshold** on calibrated score to filter candidates.
+4. Forward filtered set to downstream reranker.
+
+This can reduce wasted reranker computation on obviously irrelevant candidates.
+
+### Why interpretability/calibration matters
+
+The source highlights a specific reason calibration is needed:
+
+- Contrastive and listwise objectives used for dual encoders shape embedding space for **relative distances**; thus cosine values act like **ranking scores**, not **probabilities**.
+- As a result, the same cosine value may indicate “high relevance” for one query but “low relevance” for another query (query difficulty / ambiguity, etc.).
+
+### Dual-encoder training losses referenced (contrastive vs listwise softmax)
+
+The paper restates two common dual-encoder objectives (useful for this page because they connect optimization choices to score calibration issues):
+
+#### In-batch contrastive / InfoNCE-style loss (per query \(q_i\))
 
 \[
-f_{\theta}(\cdot): \mathcal{X} \to \mathbb{R}^n
+\text{loss}_i = - \log \frac{\exp(\cos(q_i,p_i)/\tau)}
+{\exp(\cos(q_i,p_i)/\tau) + \sum_{j\in N}\exp(\cos(q_i,p_j)/\tau)}
 \]
 
-with a (usually fixed) distance function \(\mathcal{D}\) such that:
+- \(p_i\) is the positive passage/product for query \(q_i\)
+- \(N\) are in-batch negatives
+- \(\tau\) is temperature
 
-- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** if \(y_1=y_2\)
-- and **large** otherwise.
+Cross-reference: [[contrastive_learning]].
 
-Common choices:
-- Euclidean distance \(\|p-q\|_2\)
-- cosine distance / similarity (especially with normalized embeddings)
-
-**Connection to ranking:** a retrieval system ranks candidates by a similarity score \(s(u,v)\) (dot/cosine); DML losses make this similarity **order positives above negatives**, aligning with ranking needs at retrieval/pre-ranking time.
-
-### “Direct” contrastive approaches (pair/triplet-based)
-
-These objectives are “direct” in the sense that they explicitly pull positives together and push negatives apart.
-
-#### Contrastive loss (pair-based)
-
-For two samples \((x_1,y_1)\), \((x_2,y_2)\) with a margin \(\alpha\):
+#### Softmax listwise loss over candidate set \(P_i\)
 
 \[
-\mathcal{L}_\text{contrast} =
-\mathbb{1}_{y_1 = y_2} \, \mathcal{D}^2_{f_\theta}(x_1, x_2)
-+
-\mathbb{1}_{y_1 \ne y_2} \, \max(0, \alpha - \mathcal{D}^2_{f_\theta}(x_1, x_2))
+\text{loss}_i = -\sum_{j\in P_i} y_{ij}\;
+\log\frac{\exp(\cos(q_i,p_j)/\tau)}{\sum_{j\in P_i}\exp(\cos(q_i,p_j)/\tau)}
 \]
 
-- The **margin** prevents collapse to a single point embedding.
+- \(y_{ij}\) are predefined labels (can be graded)
+- Still fundamentally shapes **relative** scores, not absolute calibration
 
-#### Triplet loss (anchor/positive/negative)
+**Interpretation in this wiki’s framing:** These are listwise/contrastive objectives for *embedding retrieval*, but they are not directly optimizing a rank metric like [[ndcg]]—and they do not inherently yield **cross-query comparable scores**.
 
-For anchor \(x_a\), positive \(x_p\) (same class), negative \(x_n\) (different
+### Cosine Adapter: query-dependent monotonic calibration of cosine similarity
+
+The **Cosine Adapter** is a small neural module that takes the **query embedding** as input and outputs parameters \(\Theta\) for a **monotonic transformation** \(F_\Theta(\cdot)\) that maps cosine similarity \(x \in [-1,1]\) to a calibrated logit.
+
+Filtering is then:
+
+\[
+\tilde{P}_i = \{p_j \mid F_\Theta(\cos(q_i,p_j)) \ge t\}
+\]
+
+- \(\Theta\) is **query-dependent** (computed once per query)
+- \(t\) is a **global threshold** tuned offline
+
+**Important design constraint:** \(F\) is chosen monotonic to preserve the ANN ranking order as much as possible (minimizing recall impact).
+
+The paper explores several mapping families (baseline plus parameterized shapes):
+
+- Raw: \(F(x)=x\)
+- Linear: \(F(x\mid a,b)=ax

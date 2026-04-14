@@ -3,6 +3,7 @@ slug: multi_stage_ranking
 sources:
 - hav4ik.github.io
 - blog.reachsumit.com
+- relevance_filtering_for_embedding_based_retrieval.pdf
 tags: []
 title: Multi-Stage Ranking Pipelines
 updated: '2026-04-14'
@@ -111,16 +112,152 @@ Typical approaches:
 
 Large-scale systems usually avoid exact metric trees (e.g., k-d trees) due to speed/memory tradeoffs at scale. Instead they use **Approximate Nearest Neighbors (ANN)** methods (e.g., hashing-based approaches) to achieve near-constant-time retrieval behavior.
 
+### Dense retrieval has “no natural cutoff” (precision risk)
+
+A key practical difference between lexical retrieval and ANN-based dense retrieval (from Walmart’s CIKM’24 report on relevance filtering):
+
+- **Lexical retrieval** inherently limits the retrieved set via term constraints (keyword matching).
+- **Dense ANN retrieval** can always return many “nearest” items, even when **very few (or zero) truly relevant items exist** for the query.
+  - In product search, the number of relevant products is often small; surfacing a long tail of irrelevant items can harm user experience even if top ranks contain relevant items.
+
+This motivates adding an explicit **relevance filtering** step between ANN retrieval and downstream re-ranking.
+
+Cross-reference: [[approximate_nearest_neighbor]], [[dense_retrieval]], [[vector_search]], [[hybrid_retrieval]].
+
 ### Where two-tower models fit: retrieval vs pre-ranking
 
-The new source emphasizes that **two-tower models are a go-to architecture for “pre-ranking”** in industry. In practice, two-tower models can appear in two closely related ways:
+The existing page emphasized that **two-tower models are a go-to architecture for “pre-ranking”**. The new source adds an additional nuance:
 
-- **Dense retrieval**: two-tower produces embeddings used directly for ANN retrieval (often viewed as part of Stage 1).
-- **Pre-ranking**: two-tower computes a fast similarity score (dot product) over a recalled candidate set (often viewed as a separate stage between retrieval and full ranking).
+- In embedding-based retrieval, the **dual encoder** produces embeddings and ANN returns **top-K** based on cosine similarity.
+- However, **top-K alone is often insufficient** to remove irrelevant candidates because:
+  - There’s no “natural” cutoff in dense retrieval.
+  - Cosine similarity is often trained with contrastive / ranking losses, making it **hard to interpret as an absolute relevance score** and **not comparable across queries**.
 
-These are compatible: whether you call it “retrieval” or “pre-ranking” often depends on where you draw the boundary between “candidate generation” and “scoring.”
+Operationally, this supports the idea that “retrieval” often needs an additional lightweight stage for **candidate set shaping** (filtering/truncation/calibration) before expensive ranking.
 
-Cross-reference: [[approximate_nearest_neighbor]], [[candidate_generation]], [[dense_retrieval]], [[hybrid_retrieval]], [[two_tower_model]].
+Cross-reference: [[two_tower_model]], [[dual_encoder]].
+
+---
+
+## Stage 1.5 (new): Relevance filtering / candidate set truncation for dense retrieval
+
+Many production pipelines include an intermediate stage—after retrieval but before full ranking—to **reduce the burden on the reranker** and improve precision. The new source describes this explicitly for embedding-based retrieval:
+
+- Goal: Filter out obviously irrelevant ANN results **before** sending candidates to the reranker.
+- Rationale: If a query has only 1 relevant item, retrieving K=1000 will include ~999 irrelevant items; making the reranker fix this is wasteful and can degrade latency/cost.
+
+This stage is closely related to:
+- “Pre-ranking” (fast scoring over many candidates)
+- “Relevance control” / “precision gating”
+- “Ranked list truncation” (deciding where to cut off a retrieved list)
+
+Cross-reference: [[re_ranking]], [[candidate_generation]].
+
+### Why naive cosine thresholds or top-K truncation can fail
+
+The Walmart report argues:
+
+- A global threshold on **raw cosine similarity** is not optimal because cosine scores are:
+  - often **not calibrated** to be probabilistic,
+  - trained for **relative** ordering within a query, and
+  - **not comparable across queries**, so a single global cutoff behaves inconsistently.
+
+This is especially pronounced when dense retrieval models are trained with:
+- **contrastive loss** with in-batch negatives, or
+- **softmax listwise losses**,
+
+because both shape embedding spaces based on **relative distances**, not absolute relevance.
+
+Cross-reference: [[contrastive_learning]], [[infonce]].
+
+### Cosine Adapter (query-dependent calibration of cosine similarity)
+
+The paper introduces a lightweight module called **Cosine Adapter**:
+
+- Input: the **query embedding** produced by the frozen dual encoder.
+- Output: parameters **Θ** that define a **query-dependent** monotonic mapping function **FΘ(x)** applied to the raw cosine similarity \(x = \cos(q, p)\).
+- Filtering rule:
+
+\[
+\tilde{P_i} = \{p_j \mid F_{\Theta}(\cos(q_i, p_j)) \ge t\}
+\]
+
+where \(t\) is a **global threshold** learned/tuned offline.
+
+**Key design choices:**
+- Mapping functions are chosen to be **monotonic** to preserve ordering as much as possible (minimizing recall loss), while enabling calibration.
+- Several function families were explored:
+  - raw: \(F(x)=x\)
+  - linear: \(F(x)=ax+b\)
+  - square root: \(F(x)=\mathrm{sgn}(x)\,a\sqrt{|x|}+b\)
+  - quadratic: \(F(x)=\mathrm{sgn}(x)\,ax^2+b\)
+  - power: \(F(x)=\mathrm{sgn}(x)\,a|x|^k+b\), with \(k\in(0,2)\)
+
+**Training objective:**
+- Train adapter with **binary cross-entropy** on relevance labels:
+  - interpret \(\sigma(F)\) as the probability the pair is relevant.
+- **Dual encoder is frozen** during adapter training.
+- Adapter may be trained on a **different dataset** than the dual encoder (e.g., dual encoder trained on engagement logs; adapter trained on human judgments).
+
+Cross-reference: [[calibration]] (if it exists), [[dual_encoder]].
+
+### Computational profile and why this is “pipeline-friendly”
+
+At inference time:
+
+- Adapter feed-forward cost: \(O(d^2)\) per query (run once), where \(d\) is embedding dimension.
+- Score mapping cost: \(O(K)\) (a few ops per candidate).
+- Compared to ranked list truncation approaches using self-attention over candidates (e.g., Choppy-style), which can be \(O(K^2 d)\), this is much cheaper.
+
+This fits multi-stage pipelines as an “in-between” stage that improves end-to-end system efficiency by reducing candidates early.
+
+Cross-reference: [[latency]].
+
+### Metrics for filtering stages (precision/recall trade-offs)
+
+The new source emphasizes that introducing filtering changes retrieval behavior from “maximize recall” toward an explicit **precision–recall trade-off** and proposes tracking additional metrics:
+
+- **PR AUC** (area under precision–recall curve) — evaluated without committing to a single threshold.
+- **P@R95**: precision at a threshold chosen to achieve **95% recall** relative to no filtering.
+- **Filter%**: percentage of retrieved results removed.
+- **Null%**: percentage of queries that return **zero** results after filtering.
+- **MRR**: still reported for MS MARCO because it is a standard retrieval metric.
+
+These metrics complement traditional offline ranking metrics such as [[mrr]], [[map]], and [[ndcg]] and are especially relevant for retrieval and candidate-set shaping stages.
+
+Cross-reference: [[offline_evaluation]] (if it exists), [[mrr]].
+
+### Empirical outcomes (MS MARCO + Walmart product search + online A/B)
+
+Key reported findings:
+
+- On **MS MARCO passage retrieval** (evaluated at K=10 and K=1000):
+  - Calibrated mappings improve PR AUC and improve **P@R95** versus raw cosine thresholding.
+  - For K=1000, calibrated methods reduce **Null%** compared to raw-score thresholding (raw threshold tends to keep all or discard all for many queries).
+  - Ranked-list truncation baseline (Choppy) can truncate too aggressively, yielding low recall in this dataset (where many queries have only one relevant passage).
+
+- On **Walmart product search** (human-judged labels: exact/substitute/irrelevant):
+  - Cosine Adapter improves PR AUC and P@R95 over raw cosine thresholds.
+  - Adapter behavior interacts with how the dual encoder was trained (contrastive vs listwise). (See contradictions/notes below.)
+
+- **Online A/B test (Walmart.com)**:
+  - Integrated into embedding retrieval → relevance filter → downstream reranker.
+  - Threshold tuned for **99% recall** to minimize risk.
+  - Reported improvement in precision for impacted queries (e.g., top-5 and top-10 precision lift), while orders and GMV were neutral (no statistically significant negative impact).
+
+Cross-reference: [[online_experimentation]].
+
+### Failure modes / query patterns that lose recall
+
+Because filtering uses a global threshold tuned for high recall (e.g., 95% or 99%), some relevant items are filtered out. The paper reports filtered-out relevant items correlate with:
+
+- rare words / rare brands
+- misspellings
+- numbers
+
+This resembles common retrieval brittleness patterns in dense retrieval and suggests monitoring for tail-query regressions when adding filtering.
+
+Cross-reference: [[query_understanding]] (if it exists), [[dense_retrieval]].
 
 ---
 
@@ -253,154 +390,3 @@ Problem: metrics like NDCG/ERR are not directly differentiable due to sorting.
 
 - **LambdaRank** modifies gradients by weighting pairwise updates with the magnitude of metric change (e.g., \(|\Delta NDCG_{ij}|\)) if two documents swap positions.
 - **LambdaMART** combines LambdaRank’s idea with gradient boosted decision trees (“Multiple Additive Regression Trees”).
-
-Notes from the source:
-
-- LambdaMART remains a very strong baseline and can outperform newer methods on some benchmarks.
-- Computing \(\Delta NDCG\) over all pairs is \(O(n^2)\) per query (naively); similar pairwise metric computations are quadratic.
-
-Cross-reference: [[lambdarank]], [[lambdamart]], [[lightgbm]].
-
----
-
-## Example: training a LambdaMART stage with LightGBM
-
-The source provides an illustrative training recipe using:
-
-- **LightGBM** objective: `lambdarank`
-- Metric: `ndcg`
-- Evaluation cutoffs: e.g. `ndcg@1,3,5,10`
-- Group/query sizes are required (query grouping is fundamental in LTR datasets)
-
-Dataset example:
-
-- **MSLR-WEB30K**
-  - ~3.7M documents
-  - ~30k queries
-  - 136 features per (q, d)
-  - graded relevance labels 0–4
-
-This fits multi-stage pipelines as a typical *re-ranking model* trained offline and deployed online as a scoring stage.
-
-Cross-reference: [[mslr_web30k]], [[ltr_datasets]].
-
----
-
-## Feature types commonly used by ranking stages
-
-From the LightGBM feature-importance discussion (MSLR-WEB30K example), prominent feature families include:
-
-- **Graph / authority signals** (e.g., PageRank-related features)
-- **URL structure features** (e.g., URL length, number of slashes)
-- **Document quality classifier outputs** (quality scores)
-- **Lexical matching scores** (e.g., Title BM25, body BM25)
-- **Query–URL click signals** (historical click count)
-
-This illustrates a common pipeline pattern:
-
-- Early retrieval: sparse/dense matching signals
-- Later re-ranking: rich engineered and learned features, including interaction logs
-
-Cross-reference: [[pagerank]], [[click_signals]], [[bm25]].
-
----
-
-## Pre-ranking with Two-Tower models (and extensions)
-
-The new source adds detail on the *pre-ranking* stage and why two-tower models are popular there:
-
-### Why two-tower is common in pre-ranking
-
-- **Inference efficiency by design**: query/user and item/doc embeddings computed independently; interact only at output (dot product).
-- **Parallelizable towers**: can compute both sides independently (and often cache or precompute item embeddings).
-- **Index-friendly**: item tower embeddings can be stored and retrieved via ANN structures.
-
-Cross-reference: [[two_tower_model]], [[approximate_nearest_neighbor]].
-
-### Dual encoder variants: Siamese vs asymmetric (and a reported quality pitfall)
-
-Dual encoders (two-tower) can be structured as:
-
-- **Siamese Dual Encoder (SDE)**: two identical sub-networks, often sharing parameters.
-- **Asymmetric Dual Encoder (ADE)**: two distinct encoders.
-
-The new source reports findings (in question-answering retrieval) that:
-
-- SDE can perform significantly better than ADE because ADE may embed inputs into **disjoint embedding spaces**, hurting retrieval quality.
-- ADE can be improved by **sharing a projection layer** (ADE-SPL), potentially matching or exceeding SDE.
-- Sharing token embedders (ADE-STE) or freezing token embedders (ADE-FTE) yields only marginal improvements.
-
-Cross-reference: [[dual_encoder]], [[siamese_networks]].
-
-### Limitations: lack of cross-tower interaction
-
-A frequently cited limitation of pure two-tower models is **limited query–document (user–item) interaction**, since most computation happens independently per tower and only a simple similarity is computed at the end. This can cap effectiveness compared to interaction-heavy ranking models.
-
-This limitation motivates:
-
-- Later-stage cross-encoders / interaction models in multi-stage pipelines.
-- Two-tower *extensions* that inject limited interaction while preserving efficiency.
-
-### Extensions aimed at better interactions while preserving efficiency
-
-The source describes several research directions:
-
-- **DAT (Dual Augmented Two-Tower)**: augment each tower’s input embedding with vectors summarizing historical positive interactions from the other side; may also incorporate category-alignment losses for imbalance.
-  - Note: later work reported gains can be limited.
-- **IntTower (Interaction Enhanced Two-Tower)**: adds lightweight blocks to increase feature interaction while keeping latency acceptable:
-  - **Light-SE block**: a lightweight feature recalibration mechanism inspired by Squeeze-and-Excitation (SENet), to weight/refine features per tower.
-  - **FE-block**: fine-grained and early feature interaction inspired by ColBERT-style late interaction ideas.
-  - **CIR module**: contrastive interaction regularization using **InfoNCE** loss, combined with logloss.
-  - Reported outcome: outperforms baselines like LR and vanilla two-tower; can be comparable to heavier ranking models (e.g., Wide&Deep/DeepFM/DCN/AutoInt) while adding negligible parameters/training time and acceptable serving latency.
-- **Single-tower pre-ranking alternatives** (more interaction, less decoupling):
-  - Can improve accuracy but break “user-item decoupling,” so need optimization tricks to mitigate efficiency costs.
-  - Example ideas include compute-aware feature selection (optimize QPS/RT tradeoffs) or learnable feature selection via dropout-like regularization.
-
-Cross-reference: [[contrastive_learning]], [[infonce]], [[colbert]], [[wide_and_deep]], [[deepfm]], [[dcn]], [[autoint]], [[feature_selection]].
-
----
-
-## Unbiased (counterfactual) learning in later stages
-
-When training rankers on clicks or engagement, implicit feedback is biased. The source highlights common biases:
-
-- **Position bias**: top-ranked items get examined/clicked more
-- **Selection bias**: some items may have near-zero chance of being examined (e.g., users rarely go to page 2+)
-- **Trust bias**: users trust the system and click higher results even if not relevant
-
-**Operational implication:** UI/design changes can shift biases (e.g., eye-tracking heatmaps show distribution of attention changes with SERP design), so bias estimators may need recalibration after major layout changes.
-
-Counterfactual LTR centers around:
-
-- **Counterfactual evaluation**: evaluating a new ranking policy using interaction data gathered under a deployed policy (“behavior policy”)
-
-Cross-reference: [[position_bias]], [[trust_bias]], [[selection_bias]], [[propensity_scoring]], [[counterfactual_evaluation]].
-
----
-
-## Contradictions / notes
-
-- **Potential contradiction / terminology tension (explicit):**
-  - Existing page content frames the candidate generation stage as “Top-*k* retrieval” and discusses embedding-based retrieval there.
-  - The new source states that **two-tower models are “the current go-to state-of-the-art solution for pre-ranking tasks”**, placing them *after* recall/retrieval rather than as the retrieval mechanism itself.
-  - Resolution: in practice, two-tower models are used both ways:
-    - as **dense retrieval** (ANN over item embeddings), and/or
-    - as a **pre-ranker** scoring candidates from an upstream recall stage.
-  - The difference is usually organizational/pipeline-boundary labeling rather than a strict architectural disagreement.
-
-- **No direct contradictions on core rationale:** both sources agree the pipeline exists to balance efficiency/latency vs effectiveness/quality.
-
----
-
-## See also
-
-- [[learning_to_rank]]
-- [[unbiased_learning_to_rank]]
-- [[counterfactual_learning]]
-- [[ndcg]]
-- [[bm25]]
-- [[approximate_nearest_neighbor]]
-- [[lightgbm]]
-- [[lambdamart]]
-- [[candidate_generation]]
-- [[two_tower_model

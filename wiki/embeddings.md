@@ -3,6 +3,7 @@ slug: embeddings
 sources:
 - hav4ik.github.io
 - blog.reachsumit.com
+- relevance_filtering_for_embedding_based_retrieval.pdf
 tags: []
 title: Embeddings and Representation Learning
 updated: '2026-04-14'
@@ -49,6 +50,21 @@ Operational motivation highlighted by the new source:
 
 Cross-references: [[learning-to-rank]], [[information-retrieval]], [[recommender-systems]].
 
+### New: Why dense retrieval needs explicit “relevance filtering”
+A CIKM’24 paper on product search (Rossi et al., 2024) highlights a practical issue in **embedding-based retrieval**:
+
+- Dense retrieval via [[approximate-nearest-neighbors]] often optimizes **recall**, but can return **low precision** candidate sets (many irrelevant items).
+- Unlike lexical retrieval (inverted index keyword matching), ANN-based dense retrieval has **no natural cutoff**: it will always return top-*K* neighbors.
+- Raw **cosine similarity** scores are often trained with **contrastive** or **ranking** losses and are therefore:
+  - hard to interpret as absolute relevance, and
+  - **not comparable across queries** (i.e., a cosine score threshold that works for one query may fail for another).
+
+Implication for system design:
+- If retrieval returns too many irrelevant candidates, the reranker must spend compute demoting them—wasting budget and potentially harming latency.
+- A lightweight post-retrieval **relevance filter** can reduce the load on re-ranking and improve user experience (especially in product search where “relevant items” may be few).
+
+Cross-references: [[dense-retrieval]], [[hybrid-retrieval]], [[learning-to-rank]].
+
 ---
 
 ## Embeddings in search engine indexing
@@ -78,6 +94,9 @@ In industrial retrieval and pre-ranking, embeddings are often produced by **two-
 A key serving optimization emphasized by the new source:
 - The **document/item tower embeddings are often frozen after training** and stored in an indexing service (i.e., a [[vector-index]] / [[vector-database]]) for fast inference-time lookup.
 - In some deployments, both towers may be effectively “frozen” for serving, with periodic offline retraining and index refresh (e.g., daily).
+
+The new CIKM’24 relevance-filtering source adds a second “freezing” pattern:
+- For post-retrieval filtering, they **freeze the dual encoders** and train only a lightweight calibration/filtering module on top (the “Cosine Adapter”), potentially using **different training data** than the dual encoder (e.g., human relevance judgments vs engagement logs).
 
 Cross-references: [[vector-index]], [[vector-database]], [[dense-retrieval]], [[nearest-neighbor-search]].
 
@@ -114,6 +133,22 @@ Cross-references: [[approximate-nearest-neighbors]], [[nearest-neighbor-search]]
 
 **Note/possible contradiction to flag (preserved):**  
 The claim that k-d trees are avoided because \(O(\log n)\) is “slow” and that ANN is “close to \(O(1)\)” is a high-level engineering statement. In practice, ANN methods typically provide *sublinear* expected query time with strong constant-factor tradeoffs and hardware/system optimizations; strict \(O(1)\) is not generally guaranteed. This page preserves the source phrasing but notes that complexity is often workload- and implementation-dependent.
+
+### New: Precision control, truncation, and “no natural cutoff” in dense retrieval
+Dense retrieval often returns a fixed top-*K* from ANN search. The new source emphasizes:
+
+- Dense retrieval has **no inherent mechanism** (unlike lexical matching) to stop returning candidates when they become irrelevant.
+- Using:
+  - **top-*K*** alone, or
+  - a **global cutoff on raw cosine similarity**
+  
+  is often insufficient because cosine scores are **not calibrated** and **not comparable across queries**.
+
+This connects to classical IR work on **ranked list truncation** (deciding where to cut off a ranked list), but with different signals:
+- Ranked list truncation approaches often model score sequences and document statistics; some use **self-attention over the candidate list**.
+- The new approach instead uses the **query embedding** to adapt how to interpret cosine scores for that query.
+
+Cross-references: [[information-retrieval]], [[learning-to-rank]].
 
 ---
 
@@ -158,6 +193,92 @@ The new source summarizes results from a QA retrieval study:
 
 **Nuance / possible contradiction with common practice (explicitly noted):**
 - This “SDE > ADE” conclusion is task- and implementation-dependent; many production dense retrieval systems do use asymmetric encoders successfully (e.g., different capacity, modalities, or feature sets per side). The key risk is *misaligned spaces*, which can be mitigated by shared components, joint training objectives, or alignment losses. This page records the source’s claim while noting it is not universally true across all retrieval settings.
+
+---
+
+## New: Relevance filtering for embedding-based retrieval (Cosine Adapter)
+
+A production-motivated approach from Rossi et al. (CIKM’24) introduces a lightweight **relevance filtering** module that sits between ANN retrieval and re-ranking.
+
+### Motivation: interpretability and cross-query score comparability
+Key observations from the source:
+
+- Dual-encoder cosine scores are shaped by **relative** objectives:
+  - contrastive loss with in-batch negatives, or
+  - listwise softmax ranking losses.
+- These objectives encourage ordering *within a query* (positive > negatives), but do not make cosine similarity an **absolute relevance score**.
+- Therefore:
+  - “cosine similarity scores cannot be compared across different queries,” and
+  - global thresholds on raw cosine similarity often behave poorly (for many queries: filter everything or nothing).
+
+**This strengthens and partially contradicts the simplistic operational idea** that “a cosine threshold” is a universally meaningful relevance cutoff:
+- Existing page framing: cosine similarity is used for nearest neighbor retrieval and can be thresholded.
+- New source: cosine similarity is often **not interpretable/calibrated** for cross-query thresholding.
+- Resolution: cosine similarity works well for **ranking neighbors**, but may need **calibration** for **global filtering/truncation** decisions.
+
+Cross-references: [[dense-retrieval]], [[contrastive-learning]], [[learning-to-rank]].
+
+### Approach: query-dependent monotonic mapping of cosine scores
+They propose learning a function that transforms raw cosine similarity \(x=\cos(q,p)\in[-1,1]\) into an interpretable relevance score:
+
+\[
+\tilde{P}_i = \{p_j \mid F_{\Theta}( \cos(q_i,p_j)) \ge t \}
+\]
+
+- \(F_\Theta(\cdot)\): **monotonic** mapping to preserve the relative order of candidates (minimizing disruption to recall).
+- \(\Theta\): **query-dependent parameters** predicted from the **query embedding**.
+- \(t\): a **global threshold** tuned offline.
+
+This component is called the **Cosine Adapter**:
+- Input: query embedding (from the frozen dual encoder).
+- Output: parameters \(\Theta\) for the chosen mapping function \(F\).
+- Training: binary classification objective (binary cross entropy) to predict relevance probability after a sigmoid:
+  - \(F\) outputs a logit; \(\sigma(F)\) is treated as \(P(\text{relevant}\mid q,p)\).
+
+Cross-references: [[representation-learning]], [[information-retrieval]].
+
+### Mapping function family (calibration functions)
+They explore several monotonic transformation families:
+
+- Raw: \(F(x)=x\)
+- Linear: \(F(x\mid a,b)=ax+b\)
+- Square root: \(F(x\mid a,b)=\operatorname{sgn}(x)\,a\sqrt{|x|}+b\)
+- Quadratic: \(F(x\mid a,b)=\operatorname{sgn}(x)\,a x^2+b\)
+- Power: \(F(x\mid a,b,k)=\operatorname{sgn}(x)\,a|x|^k+b,\quad k\in(0,2)\)
+
+Important serving property:
+- Adapter compute is **once per query** (to produce \(\Theta\)), plus **\(O(K)\)** per candidate list to compute calibrated scores.
+- The paper contrasts this to list-truncation methods that do self-attention over candidates with **\(O(K^2 d)\)** complexity.
+
+Cross-references: [[neural-networks]] (if present), [[search]].
+
+### Training and deployment pattern: “freeze encoders, train the adapter”
+The method decouples concerns:
+
+- **Dual encoders** are trained (contrastive or listwise) for good retrieval.
+- **Cosine Adapter** is trained on relevance-labeled data to calibrate/filter results.
+- The dual encoder is **frozen** while training the adapter.
+
+**Practical note:** the adapter training data can be different:
+- Dual encoders may train on engagement/click signals.
+- Adapter may train on **human relevance judgments** (as in their Walmart experiments).
+
+Cross-references: [[counterfactual-learning]] (for bias/noisy click labels), [[learning-to-rank]].
+
+### Metrics and tradeoffs (precision vs recall)
+Filtering introduces an explicit tradeoff:
+- Goal: significantly improve **precision** with only small loss of **recall**.
+
+Metrics used in the paper include:
+- **PR AUC** (no filtering applied; measures separability of relevant vs irrelevant)
+- **P@R95** (precision at 95% recall relative to no filtering; uses a global threshold)
+- **Filter%** (how many results removed)
+- **Null%** (queries returning zero results after filtering)
+- **MRR** (reported on MS MARCO)
+
+This makes “retrieval set quality” measurable beyond recall-only thinking.
+
+Cross-references: [[evaluation-metrics]] (if present), [[information-retrieval]].
 
 ---
 
@@ -206,146 +327,4 @@ Classic contrastive loss (Chopra et al., 2005) for two samples \((x_1,x_2)\):
 =
 \mathbb{1}_{y_1 = y_2} \, \mathcal{D}^2(f_\theta(x_1), f_\theta(x_2))
 +
-\mathbb{1}_{y_1 \ne y_2} \, \max\left(0, \alpha - \mathcal{D}^2(f_\theta(x_1), f_\theta(x_2))\right)
-\]
-
-- \(\alpha\) is a **margin** to prevent collapse (mapping everything to the same point).
-
-Cross-references: [[contrastive-learning]].
-
-### Triplet loss and negative mining
-Triplet loss (Schroff et al., 2015) uses an anchor/positive/negative \((x_a,x_p,x_n)\):
-
-\[
-\mathcal{L}_\text{triplet}
-=
-\max\left(0, \mathcal{D}^2(f_\theta(x_a), f_\theta(x_p)) - \mathcal{D}^2(f_\theta(x_a), f_\theta(x_n)) + \alpha \right)
-\]
-
-Key practical ingredient emphasized by the DML survey:
-- **Negative sample mining** is often required to pick informative/hard negatives.
-
-Cross-references: [[contrastive-learning]].
-
-### Limitations highlighted for distance-based contrastive objectives (new)
-The DML survey argues many “direct” Euclidean contrastive objectives face two recurring issues:
-
-- **Expansion issue:** hard to ensure *all* same-class samples collapse to a coherent region globally (objectives can be too local/batch-dependent).
-- **Sampling issue:** strong reliance on sophisticated mining (hard in distributed training).
-
-**Integration note:** This frames why many modern systems prefer objectives that use *global class prototypes* (e.g., softmax-based angular margins) or batch-contrastive methods (e.g., InfoNCE variants).
-
-Cross-references: [[contrastive-learning]].
-
-### Center loss: augmenting softmax with embedding compactness (new)
-Center loss (Wen et al., 2016) adds a term pulling features toward per-class centers \(c_{y_i}\):
-
-\[
-\mathcal{L}_\text{center} = \mathcal{L}_\text{softmax} + \frac{\lambda}{2}\sum_{i=1}^{N}\|z_i - c_{y_i}\|_2^2
-\]
-
-- Addresses:
-  - sampling burden (less mining),
-  - tighter intra-class clusters.
-
-Cross-references: [[representation-learning]].
-
-### Angular margin softmax family (CosFace / ArcFace etc.) (new)
-The DML survey describes a shift toward **angular margin** methods (popular in face recognition and instance retrieval):
-
-Common setup:
-- Normalize embeddings \(z\) and class weights \(W_j\) so \(\|z\|=\|W_j\|=1\).
-- Logits become cosine similarities: \(W_j^\top z = \cos\theta_j\).
-- Introduce a **margin** to enforce stronger inter-class separation.
-
-#### SphereFace (multiplicative angular margin)
-SphereFace (Liu et al., 2017) uses a multiplicative angular margin \(\mu\) inside \(\cos(\mu \theta)\).
-- The survey notes optimization difficulties due to cosine non-monotonicity and the need for piecewise tricks.
-
-#### CosFace (additive cosine margin)
-CosFace (Wang et al., 2018):
-
-\[
-\mathcal{L}_\text{CosFace}
-=
--\frac{1}{N}\sum_i
-\log
-\frac{\exp\{s(\cos(\theta_{y_i,i})-m)\}}
-{\exp\{s(\cos(\theta_{y_i,i})-m)\}+\sum_{j\ne y_i}\exp\{s\cos(\theta_{j,i})\}}
-\]
-
-- \(s\): scaling parameter; \(m\): cosine margin parameter.
-
-#### ArcFace (additive angular margin)
-ArcFace (Deng et al., 2019) adds margin in **angle space**:
-
-\[
-\mathcal{L}_\text{ArcFace}
-=
--\frac{1}{N}\sum_i
-\log
-\frac{\exp\{s\cos(\theta_{y_i,i}+m)\}}
-{\exp\{s\cos(\theta_{y_i,i}+m)\}+\sum_{j\ne y_i}\exp\{s\cos(\theta_{j,i})\}}
-\]
-
-- Reported as slightly stronger than CosFace across benchmarks in the survey.
-
-#### Hyperparameter sensitivity: scaling \(s\) and margin \(m\)
-The DML survey emphasizes:
-- Choosing \(s\) and \(m\) is crucial; poor choices can make training under-penalize errors or over-penalize confident correct cases.
-- AdaCos proposes a fixed scaling heuristic: \(\tilde{s} \approx \sqrt{2}\log(C-1)\) where \(C\) is number of classes.
-
-**Practical note (new, and a mild contradiction to “contrastive learning usually computes embeddings”):**
-- The existing page says embeddings are “usually computed using state-of-the-art contrastive learning neural networks.”  
-- The DML survey suggests in *supervised metric learning*, **softmax + margin** objectives (ArcFace/CosFace variants) can outperform direct contrastive losses (triplet/contrastive), and are widely used in strong real-world retrieval/recognition solutions.  
-  - **Resolution:** both families are common; “usually” depends heavily on modality, supervision type, and whether training is framed as classification vs pairwise ranking/contrastive.
-
-Cross-references: [[contrastive-learning]], [[multimodal-ml]].
-
-### Sub-centers and dynamic margins for long-tail / noisy classes (new)
-The DML survey highlights extensions for difficult, imbalanced, and noisy datasets:
-
-- **Sub-Center ArcFace:** multiple centers per class; uses nearest sub-center, helping with intra-class variability and label noise.
-- **Dynamic margin:** class-dependent margins based on class frequency (rarer classes get larger margins), improving convergence under imbalance.
-
-**Connection to IR:** This is relevant to retrieval domains with:
-- long-tail entities/items,
-- noisy labels (click logs, weak supervision),
-- heterogeneous class granularity (e.g., product catalogs).
-
-Cross-references: [[recommender-systems]], [[counterfactual-learning]] (for noisy/biased labels).
-
----
-
-## Representation learning signals used for ranking
-
-Embeddings rarely act alone in production ranking. The source emphasizes:
-
-- **Feature engineering remains extremely important**: “the more expressive your features are, the better your ranking layer will perform.”
-- Learned representations (embeddings) are often combined with:
-  - lexical match features (BM25, term overlap),
-  - link analysis signals (e.g., PageRank),
-  - behavioral signals (e.g., clicks),
-  - metadata/content quality signals,
-  - and many other domain-specific features.
-
-Cross-references: [[feature-engineering]], [[pagerank]].
-
-### Pre-ranking vs ranking: interaction tradeoffs (new)
-The new source frames an architectural tradeoff:
-
-- **Pre-ranking** favors **fast** models because it scores many candidates.
-  - Two-tower models are common here because they keep query-document interaction minimal (late interaction).
-- **Ranking / re-ranking** can use more expensive **interaction-rich** models because it scores fewer candidates.
-
-This aligns with the broader cascade idea discussed earlier.
-
-Cross-references: [[learning-to-rank]].
-
----
-
-## How embeddings connect to Learning to Rank (LTR)
-
-After retrieval produces a candidate set, **Learning to Rank (LTR)** models re-order results.
-
-The source frames LTR as learning a function \(f(\mathbf{q}, \mathcal{D})\) that produces a ranking (often via scoring each document and sorting by score). Embeddings contribute to LTR
+\mathbb{1}_{y_1 \ne y_2} \, \

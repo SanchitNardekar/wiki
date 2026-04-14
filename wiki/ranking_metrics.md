@@ -2,6 +2,7 @@
 slug: ranking_metrics
 sources:
 - hav4ik.github.io
+- relevance_filtering_for_embedding_based_retrieval.pdf
 tags: []
 title: Ranking Metrics and Evaluation
 updated: '2026-04-14'
@@ -14,6 +15,8 @@ This page collects the core *ranking quality metrics* used in information retrie
 It also adds context from *metric learning / embedding retrieval* literature (Deep Metric Learning), where the system is often evaluated as a **retrieval + ranking-by-similarity** pipeline rather than a classic supervised “ranker over a candidate set”. This matters because the *evaluation metrics* used in embedding retrieval (e.g., Recall@K, Precision@K, mAP, rank-1) overlap with IR metrics, while the *training objectives* (contrastive / triplet / angular-margin losses) are very different from standard LTR losses.
 
 **New (LLM reasoning / inference-time ranking) context:** some modern “reasoning” evaluations effectively turn *generation* into a *ranking / aggregation* problem by sampling multiple candidate outputs and selecting an answer via a voting/selection rule (e.g., **majority vote among K samples**). This introduces ranking-like evaluation questions (how to allocate a compute budget, how to aggregate candidates, and how sensitive the metric is to output length).
+
+**New (embedding retrieval relevance filtering) context:** recent production work on dense / embedding-based retrieval highlights that *top-K retrieval* can have **no natural cutoff** (unlike lexical retrieval), and that **raw cosine similarity is often not comparable across queries**—making “filter by cosine threshold” unreliable. A proposed solution is *query-dependent score calibration* that maps cosine similarity into an interpretable relevance score so that a **global threshold** can be applied for filtering before downstream re-ranking.
 
 Related pages to cross-reference:
 - Learning-to-Rank: [[learning_to_rank]]
@@ -54,6 +57,22 @@ In these pipelines, “ranking evaluation” still means “put the best matches
 This is relevant to [[search_architecture]] because many modern systems use:
 - a *retrieval stage* (ANN / vector search) and then
 - possibly a *re-ranking stage* (LTR) on a smaller candidate set.
+
+### 1.1.1) Dense retrieval has “no natural cutoff” (precision control problem)
+
+The CIKM’24 “Relevance Filtering for Embedding-based Retrieval” source makes a key practical point for embedding-based retrieval:
+
+- Lexical retrieval often has an *implicit cutoff* because keyword matching limits the retrieved set.
+- Dense retrieval via ANN can always return **top-K** neighbors even when few (or zero) are truly relevant.
+- If the number of relevant items is small (common in **product search**), maximizing recall can yield **low precision** and a poor user experience even if the top few are good.
+
+Implication for evaluation and reporting:
+
+- Standard top-K metrics (Recall@K, MRR@K) can look acceptable while the *tail of the retrieved set* contains many irrelevant items that still:
+  - waste downstream re-ranker compute, and/or
+  - leak into the final ranked list under failure modes.
+
+Cross-reference: candidate-set sizing and stage boundaries in [[search_architecture]].
 
 ### 1.2) Ranking-like evaluation for sampled generation (LLM reasoning)
 
@@ -175,6 +194,23 @@ These metrics are conceptually compatible with IR ranking evaluation; the main d
 
 > Cross-reference: embedding retrieval is often the *retrieval stage* in [[search_architecture]], and can be followed by LTR re-ranking [[learning_to_rank]].
 
+### 5.1.1) New: ranked-list truncation and *filtering* as part of evaluation
+
+The CIKM’24 dense retrieval source reframes an important nuance:
+
+- In dense retrieval, choosing \(K\) is not just an evaluation cutoff; it can be an *operational candidate-set size* sent to reranking.
+- Because ANN always returns a top-K list, systems often need an explicit **relevance filtering** step that decides which retrieved items are “relevant enough” to keep.
+
+This introduces additional evaluation questions beyond Recall@K:
+
+- What is the **precision–recall tradeoff** of filtering *before reranking*?
+- Does filtering create **null-result queries** (no items left)?
+- Is the filtering rule stable across **queries of different difficulty**?
+
+These issues connect to ranked-list truncation literature (predicting a per-query cutoff position) but in dense retrieval settings may be addressed via **score calibration** (see §10).
+
+Cross-reference: retrieval → filtering → reranking as a pipeline design choice in [[search_architecture]].
+
 ### 5.2) “@K” analogs in sampled-generation evaluation (Pass@1, Maj@K)
 
 The DeepSeek-R1 math source uses evaluation metrics that behave like “@K” cutoffs, but in **sample space** rather than document space:
@@ -293,46 +329,4 @@ The DeepSeek-R1 math source underscores that evaluation numbers can move substan
   - They report that at *higher* token budgets (e.g., 32K vs 16K), **Maj@32 can get slightly worse**, attributing it to increased self-doubt/hallucination when the model has “more time to think”.
   - This is analogous to how changing **candidate set size** or **reranking depth** in [[search_architecture]] can change measured quality in non-monotonic ways.
 - **Stop conditions matter**
-  - They used a specific stop string for their tuned models because they tended to output correct answers earlier; applying the same stop condition to baseline DeepSeek-R1 caused accuracy drops.
-  - This is analogous to applying a metric/reporting pipeline that is not invariant across systems, which can create unfair comparisons.
-- **Sampling hyperparameters matter**
-  - Temperature and top_p affect the candidate distribution, which affects Pass@1 and Maj@K.
-- **Noise reduction**
-  - For Maj@K, they repeat subsampling/voting multiple times and average to reduce variance—similar in spirit to confidence intervals and repeated runs in [[online_evaluation]].
-
-**Practical recommendation:** when reporting any “top-K” style metric (whether list ranking or sample aggregation), always log:
-- the cutoff \(K\),
-- the budget (tokens, time, or candidate depth),
-- and the sampling/serving policy that generated the candidates.
-
----
-
-## 9) Additional background: metric learning objectives (context for ranking evaluation)
-
-The new source is not primarily about ranking metrics, but it adds useful context on *why* teams optimize certain surrogates even when evaluation is retrieval ranking.
-
-### 9.1) Common supervised metric learning setup
-
-Learn:
-- an embedding model \(f_\theta: \mathcal{X} \to \mathbb{R}^n\)
-- a distance \(\mathcal{D}\) (often fixed: \(l_2\) or cosine)
-
-Such that:
-- \(\mathcal{D}(f_\theta(x_1), f_\theta(x_2))\) is **small** when labels match,
-- and **large** otherwise.
-
-### 9.2) Contrastive and triplet-style losses (surrogates for retrieval ranking)
-
-- **Contrastive loss** (pair-based; margin \(\alpha\))
-  - Pull positive pairs together; push negatives apart up to a margin.
-- **Triplet loss** (anchor/positive/negative; margin \(\alpha\))
-  - Enforces \(D(a,p) + \alpha \le D(a,n)\) for sampled triplets.
-  - Often relies on **negative mining** to be effective.
-
-The source emphasizes two classic difficulties:
-- **Sampling issue**: triplet/contrastive methods depend heavily on mining “hard” negatives.
-- **Expansion issue**: local constraints may not globally cluster each class well without additional structure.
-
-These are analogous in spirit to LTR challenges where the surrogate loss must create the right *global ordering behavior* even though it optimizes local comparisons.
-
-### 9.3) Angular-margin softmax losses (ArcFace/Cos
+  - They used a specific stop string for their tuned models because they

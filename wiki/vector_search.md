@@ -3,6 +3,7 @@ slug: vector_search
 sources:
 - hav4ik.github.io
 - blog.reachsumit.com
+- relevance_filtering_for_embedding_based_retrieval.pdf
 tags: []
 title: Vector Search and ANN
 updated: '2026-04-14'
@@ -14,7 +15,7 @@ Vector search (also called embedding-based retrieval) is a family of retrieval t
 
 This page focuses on **vector search** and **Approximate Nearest Neighbor (ANN)** methods that make nearest-neighbor retrieval feasible at large scale, and how they fit into a broader search system and ranking pipeline (see also [[learning_to_rank]]).
 
-**New in this update:** additional context from supervised **Deep Metric Learning (DML)** on how embeddings are trained (losses, margins, sampling/mining), and how those training choices affect nearest-neighbor behavior.
+**New in this update:** additional context on **relevance filtering / score calibration for dense retrieval** (CIKM’24 “Cosine Adapter”), motivated by the fact that ANN-based dense retrieval often has **no natural cutoff** and raw cosine scores are frequently **not comparable across queries**.
 
 ---
 
@@ -46,16 +47,16 @@ Cross-references:
 
 Modern web-scale and recommender-style search engines may maintain multiple indexes, each optimized for different retrieval paradigms:
 
-- **Inverted index (posting lists)**  
+- **Inverted index (posting lists)**
   - Maps terms → documents.
   - Enables classic lexical retrieval and scoring such as TF‑IDF and BM25.
   - Useful for exact term matching and entity matching.
 
-- **Vector index**  
+- **Vector index**
   - Stores dense embeddings for documents (and sometimes pre-computed query embeddings, depending on the system).
   - Enables nearest-neighbor retrieval by vector similarity (cosine or Euclidean).
 
-- **Feature index**  
+- **Feature index**
   - Stores a large collection of engineered signals and/or compressed neural embeddings.
   - Used heavily in later-stage ranking (re-ranking).
 
@@ -321,7 +322,7 @@ The new source positions two-tower models as a **go-to architecture for pre-rank
 - embedding indexes allow low-latency scoring and retrieval.
 
 **Potential nuance / mild tension with existing phrasing (not a direct contradiction):**
-- Existing content frames vector search primarily as step (2) “top‑k retrieval”.  
+- Existing content frames vector search primarily as step (2) “top‑k retrieval”.
 - The new source emphasizes that, in many real systems, there is an explicit **pre-ranking stage** between retrieval and ranking where two-tower models are heavily used.
 - Reconciliation: vector search can be used in **retrieval**, and also to support **pre-ranking** (e.g., embedding-based scoring of a retrieved candidate set), depending on the stack.
 
@@ -366,6 +367,4 @@ Cross-references:
 
 ---
 
-## Biases and evaluation caveats (why retrieval ≠ relevance)
-
-While not specific to ANN mechanics, the source
+## Relevance filtering for embedding-based retrieval (Cosine
