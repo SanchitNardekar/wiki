@@ -2,6 +2,7 @@
 slug: multi_stage_ranking
 sources:
 - hav4ik.github.io
+- blog.reachsumit.com
 tags: []
 title: Multi-Stage Ranking Pipelines
 updated: '2026-04-14'
@@ -23,6 +24,10 @@ At web scale, it is computationally infeasible to compute rich features and run 
 - **Improves latency predictability** by reserving expensive models for only top candidates.
 - **Improves quality** by allowing later stages to use richer features and more powerful rankers.
 
+**Additional motivation from industry reports:** strict latency constraints strongly shape stage design; even ~100ms latency regressions have been reported to measurably degrade user experience and revenue in large online systems. This reinforces why “one big model” is rarely used end-to-end in production.
+
+Cross-reference: [[latency]], [[online_experimentation]].
+
 ---
 
 ## High-level pipeline (retrieval → ranking)
@@ -38,6 +43,19 @@ The core online flow is:
 - Given a query **q**, retrieve a set of candidate documents **D**.
 - Compute features for each (q, d) pair.
 - Produce scores **sᵢ = f(q, dᵢ)** and sort by score.
+
+### Cascade / funnel framing (recall → pre-ranking → ranking → re-ranking)
+
+Many large systems describe the same architecture as a **cascade ranking system**:
+
+- **Recall / Retrieval**: maximize recall with very fast matching
+- **Pre-ranking**: fast ML scoring over a *larger* candidate set than later stages
+- **Ranking**: heavier models (often deep neural nets) over fewer candidates
+- **Re-ranking**: post-processing, diversification, business rules, or even heavier models
+
+This naming emphasizes that early stages are often optimized for **recall-like objectives** while later stages focus on **final ordering quality** and richer constraints.
+
+Cross-reference: [[candidate_generation]], [[retrieval]], [[re_ranking]], [[diversification]].
 
 ---
 
@@ -58,6 +76,22 @@ Indexing is typically performed **offline** and continuously. Modern systems may
 
 **Key point:** Feature engineering remains central—“the more expressive your features are, the better your ranking layer will perform.”
 
+### Embedding indexes from pre-ranking models (two-tower / dual-encoder)
+
+In many recommender systems and ads/search stacks, a key offline artifact is an **embedding index** produced by a **two-tower (dual-encoder / bi-encoder)** model:
+
+- A **query/user tower** encodes the request/context into an embedding.
+- A **document/item/ad tower** encodes candidates into embeddings.
+- Similarity is computed via **late interaction** (often a dot product).
+
+A common production pattern is:
+
+- Precompute and store **item tower embeddings** in an indexing service (vector DB / ANN structure).
+- At inference, compute query/user embedding online and retrieve nearest neighbors quickly.
+- In some deployments, embeddings (especially the item tower) can be **frozen after training** and updated on a schedule; some systems even freeze both towers and rebuild indexes periodically (e.g., daily offline retrains in certain large-scale deployments).
+
+Cross-reference: [[two_tower_model]], [[dual_encoder]], [[dense_retrieval]], [[vector_search]], [[embeddings]].
+
 Cross-reference: [[indexing]], [[inverted_index]], [[vector_search]], [[bm25]], [[embeddings]].
 
 ---
@@ -77,7 +111,16 @@ Typical approaches:
 
 Large-scale systems usually avoid exact metric trees (e.g., k-d trees) due to speed/memory tradeoffs at scale. Instead they use **Approximate Nearest Neighbors (ANN)** methods (e.g., hashing-based approaches) to achieve near-constant-time retrieval behavior.
 
-Cross-reference: [[approximate_nearest_neighbor]], [[candidate_generation]], [[dense_retrieval]], [[hybrid_retrieval]].
+### Where two-tower models fit: retrieval vs pre-ranking
+
+The new source emphasizes that **two-tower models are a go-to architecture for “pre-ranking”** in industry. In practice, two-tower models can appear in two closely related ways:
+
+- **Dense retrieval**: two-tower produces embeddings used directly for ANN retrieval (often viewed as part of Stage 1).
+- **Pre-ranking**: two-tower computes a fast similarity score (dot product) over a recalled candidate set (often viewed as a separate stage between retrieval and full ranking).
+
+These are compatible: whether you call it “retrieval” or “pre-ranking” often depends on where you draw the boundary between “candidate generation” and “scoring.”
+
+Cross-reference: [[approximate_nearest_neighbor]], [[candidate_generation]], [[dense_retrieval]], [[hybrid_retrieval]], [[two_tower_model]].
 
 ---
 
@@ -98,6 +141,28 @@ learn a function:
 - commonly implemented as scoring each document: **sᵢ = f(q, dᵢ)**, then sorting by **sᵢ**
 
 Cross-reference: [[learning_to_rank]].
+
+### Neural architecture spectrum across stages (representation vs interaction)
+
+The new source highlights a commonly used taxonomy of neural ranker/matching architectures that maps cleanly to multi-stage pipelines:
+
+- **Representation-based (decoupled) models**: e.g., **Two-Tower / dual-encoder**
+  - Compute query and doc embeddings independently
+  - Interaction is “late” (e.g., dot product)
+  - Enables embedding indexes and very fast serving
+  - Common in retrieval and pre-ranking
+- **Interaction-based models**: e.g., DRMM/KNRM-style interaction matrices
+  - Model fine-grained term/phrase interactions earlier in the network
+  - Typically heavier than pure dual encoders
+- **Cross-encoders**: e.g., BERT cross-encoder scoring (jointly encoding query+doc)
+  - Most expressive for query-document interactions
+  - Usually reserved for later ranking/re-ranking due to cost
+- **Late-interaction hybrids**: e.g., ColBERT-style approaches
+  - Preserve decoupling but allow richer late interaction than a single dot product
+
+**Operational takeaway:** multi-stage pipelines often progress from **decoupled/cheap** (representation learning + ANN) → **more interaction/cost** (cross-encoders or interaction-heavy models).
+
+Cross-reference: [[bert_ranking]], [[cross_encoder]], [[colbert]], [[neural_ir]].
 
 ---
 
@@ -240,6 +305,61 @@ Cross-reference: [[pagerank]], [[click_signals]], [[bm25]].
 
 ---
 
+## Pre-ranking with Two-Tower models (and extensions)
+
+The new source adds detail on the *pre-ranking* stage and why two-tower models are popular there:
+
+### Why two-tower is common in pre-ranking
+
+- **Inference efficiency by design**: query/user and item/doc embeddings computed independently; interact only at output (dot product).
+- **Parallelizable towers**: can compute both sides independently (and often cache or precompute item embeddings).
+- **Index-friendly**: item tower embeddings can be stored and retrieved via ANN structures.
+
+Cross-reference: [[two_tower_model]], [[approximate_nearest_neighbor]].
+
+### Dual encoder variants: Siamese vs asymmetric (and a reported quality pitfall)
+
+Dual encoders (two-tower) can be structured as:
+
+- **Siamese Dual Encoder (SDE)**: two identical sub-networks, often sharing parameters.
+- **Asymmetric Dual Encoder (ADE)**: two distinct encoders.
+
+The new source reports findings (in question-answering retrieval) that:
+
+- SDE can perform significantly better than ADE because ADE may embed inputs into **disjoint embedding spaces**, hurting retrieval quality.
+- ADE can be improved by **sharing a projection layer** (ADE-SPL), potentially matching or exceeding SDE.
+- Sharing token embedders (ADE-STE) or freezing token embedders (ADE-FTE) yields only marginal improvements.
+
+Cross-reference: [[dual_encoder]], [[siamese_networks]].
+
+### Limitations: lack of cross-tower interaction
+
+A frequently cited limitation of pure two-tower models is **limited query–document (user–item) interaction**, since most computation happens independently per tower and only a simple similarity is computed at the end. This can cap effectiveness compared to interaction-heavy ranking models.
+
+This limitation motivates:
+
+- Later-stage cross-encoders / interaction models in multi-stage pipelines.
+- Two-tower *extensions* that inject limited interaction while preserving efficiency.
+
+### Extensions aimed at better interactions while preserving efficiency
+
+The source describes several research directions:
+
+- **DAT (Dual Augmented Two-Tower)**: augment each tower’s input embedding with vectors summarizing historical positive interactions from the other side; may also incorporate category-alignment losses for imbalance.
+  - Note: later work reported gains can be limited.
+- **IntTower (Interaction Enhanced Two-Tower)**: adds lightweight blocks to increase feature interaction while keeping latency acceptable:
+  - **Light-SE block**: a lightweight feature recalibration mechanism inspired by Squeeze-and-Excitation (SENet), to weight/refine features per tower.
+  - **FE-block**: fine-grained and early feature interaction inspired by ColBERT-style late interaction ideas.
+  - **CIR module**: contrastive interaction regularization using **InfoNCE** loss, combined with logloss.
+  - Reported outcome: outperforms baselines like LR and vanilla two-tower; can be comparable to heavier ranking models (e.g., Wide&Deep/DeepFM/DCN/AutoInt) while adding negligible parameters/training time and acceptable serving latency.
+- **Single-tower pre-ranking alternatives** (more interaction, less decoupling):
+  - Can improve accuracy but break “user-item decoupling,” so need optimization tricks to mitigate efficiency costs.
+  - Example ideas include compute-aware feature selection (optimize QPS/RT tradeoffs) or learnable feature selection via dropout-like regularization.
+
+Cross-reference: [[contrastive_learning]], [[infonce]], [[colbert]], [[wide_and_deep]], [[deepfm]], [[dcn]], [[autoint]], [[feature_selection]].
+
+---
+
 ## Unbiased (counterfactual) learning in later stages
 
 When training rankers on clicks or engagement, implicit feedback is biased. The source highlights common biases:
@@ -260,9 +380,15 @@ Cross-reference: [[position_bias]], [[trust_bias]], [[selection_bias]], [[propen
 
 ## Contradictions / notes
 
-- **No contradictions with existing page content**: this is a new page, so there is no prior text to conflict with.
-- **Potential terminology mismatch (note, not a contradiction):**
-  - The source sometimes uses “Top-k Retrieval” as “Level-0 Ranking” or “Matching”. In some organizations, “ranking” is reserved for LTR-based scoring stages only, and retrieval is treated as separate from ranking. This page treats retrieval as the first stage in a multi-stage ranking pipeline, consistent with the “Level-0 ranking” framing.
+- **Potential contradiction / terminology tension (explicit):**
+  - Existing page content frames the candidate generation stage as “Top-*k* retrieval” and discusses embedding-based retrieval there.
+  - The new source states that **two-tower models are “the current go-to state-of-the-art solution for pre-ranking tasks”**, placing them *after* recall/retrieval rather than as the retrieval mechanism itself.
+  - Resolution: in practice, two-tower models are used both ways:
+    - as **dense retrieval** (ANN over item embeddings), and/or
+    - as a **pre-ranker** scoring candidates from an upstream recall stage.
+  - The difference is usually organizational/pipeline-boundary labeling rather than a strict architectural disagreement.
+
+- **No direct contradictions on core rationale:** both sources agree the pipeline exists to balance efficiency/latency vs effectiveness/quality.
 
 ---
 
@@ -277,3 +403,4 @@ Cross-reference: [[position_bias]], [[trust_bias]], [[selection_bias]], [[propen
 - [[lightgbm]]
 - [[lambdamart]]
 - [[candidate_generation]]
+- [[two_tower_model

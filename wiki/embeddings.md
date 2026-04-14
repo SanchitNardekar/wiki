@@ -2,6 +2,7 @@
 slug: embeddings
 sources:
 - hav4ik.github.io
+- blog.reachsumit.com
 tags: []
 title: Embeddings and Representation Learning
 updated: '2026-04-14'
@@ -35,6 +36,19 @@ This connects embeddings to both:
 - **First-stage retrieval** (high recall, fast)
 - **Later-stage ranking** (higher precision, uses many signals)
 
+### Cascade / multi-stage ranking context (new)
+A common production pattern (in both [[search]] and [[recommender-systems]]) is a **cascade ranking system**:
+
+- **Recall / retrieval:** very fast, high-recall candidate generation (lexical, dense, or hybrid).
+- **Pre-ranking:** lightweight model that filters and scores a *large* candidate set under tight latency.
+- **Ranking / re-ranking:** heavier models that score a much smaller set with richer interactions and features.
+
+Operational motivation highlighted by the new source:
+- Systems may have **tens of millions** of candidates.
+- Even small latency increases (e.g., +100ms) can measurably hurt user experience and revenue, pushing architectures toward multi-stage designs.
+
+Cross-references: [[learning-to-rank]], [[information-retrieval]], [[recommender-systems]].
+
 ---
 
 ## Embeddings in search engine indexing
@@ -54,7 +68,18 @@ In addition to classical lexical indexes, modern search engines may maintain mul
   - Built from “thousands of different signals” and can include **compressed embeddings**.
   - Used for re-ranking.
 
-Cross-references: [[bm25]], [[tf-idf]], [[vector-database]], [[contrastive-learning]].
+### Two-tower embedding storage and “freezing” (new)
+In industrial retrieval and pre-ranking, embeddings are often produced by **two-tower (dual-encoder) architectures** (see [[dense-retrieval]] for the retrieval framing):
+
+- A **query/user tower** produces an embedding for the request context.
+- A **document/item/ad tower** produces an embedding for each candidate.
+- The two vectors interact via a **late interaction** operation (often a dot product / inner product) to produce a similarity score.
+
+A key serving optimization emphasized by the new source:
+- The **document/item tower embeddings are often frozen after training** and stored in an indexing service (i.e., a [[vector-index]] / [[vector-database]]) for fast inference-time lookup.
+- In some deployments, both towers may be effectively “frozen” for serving, with periodic offline retraining and index refresh (e.g., daily).
+
+Cross-references: [[vector-index]], [[vector-database]], [[dense-retrieval]], [[nearest-neighbor-search]].
 
 ---
 
@@ -87,8 +112,52 @@ The source highlights a systems/scaling point:
 
 Cross-references: [[approximate-nearest-neighbors]], [[nearest-neighbor-search]], [[vector-index]].
 
-**Note/possible contradiction to flag:**  
+**Note/possible contradiction to flag (preserved):**  
 The claim that k-d trees are avoided because \(O(\log n)\) is “slow” and that ANN is “close to \(O(1)\)” is a high-level engineering statement. In practice, ANN methods typically provide *sublinear* expected query time with strong constant-factor tradeoffs and hardware/system optimizations; strict \(O(1)\) is not generally guaranteed. This page preserves the source phrasing but notes that complexity is often workload- and implementation-dependent.
+
+---
+
+## Two-tower (dual-encoder / bi-encoder) architectures for embeddings (new)
+
+Two-tower models are widely used across **search**, **ads**, and **recommendation** for retrieval and especially **pre-ranking** due to a strong accuracy/latency tradeoff.
+
+### Basic structure
+- **Inputs:** e.g., (query, document) or (user, item/ad).
+- Each side passes through:
+  - embedding layers (for sparse/categorical features, tokens, IDs),
+  - optional DNN layers,
+  - producing a **latent vector representation**.
+- **Scoring:** similarity is computed via **inner product** (dot product) or related similarity in embedding space.
+
+This is a **representation-based** (a.k.a. “embedding-based”) approach:
+- Query and document embeddings are computed independently, then compared at the end (**late interaction**).
+- Independence enables precomputing and indexing one side (usually documents/items).
+
+Cross-references: [[dense-retrieval]], [[contrastive-learning]], [[vector-index]].
+
+### Terminology: dual encoder variants
+The new source distinguishes common dual-encoder forms:
+
+- **Siamese Dual Encoder (SDE):**
+  - Two identical subnetworks (shared parameters).
+  - Historically proposed for similarity/distance tasks (e.g., signature verification).
+- **Asymmetric Dual Encoder (ADE):**
+  - Two distinct (non-shared) encoders.
+  - Used when asymmetry between inputs is desired (e.g., query vs. document differences).
+
+A further variant discussed:
+- **ADE with Shared Projection Layer (ADE-SPL):** share (some) projection layer even if encoders differ.
+
+Cross-references: [[representation-learning]] (if present), [[dense-retrieval]].
+
+### Reported effectiveness claim (potentially conflicting/nuanced)
+The new source summarizes results from a QA retrieval study:
+
+- It reports **SDEs perform significantly better than ADEs**, attributing worse ADE performance to embedding the two inputs into **disjoint embedding spaces** (hurting retrieval quality).
+- It also reports ADE performance can be improved to match or exceed SDE by **sharing a projection layer** (ADE-SPL), while sharing/freezing token embedders (ADE-STE, ADE-FTE) gives only marginal gains.
+
+**Nuance / possible contradiction with common practice (explicitly noted):**
+- This “SDE > ADE” conclusion is task- and implementation-dependent; many production dense retrieval systems do use asymmetric encoders successfully (e.g., different capacity, modalities, or feature sets per side). The key risk is *misaligned spaces*, which can be mitigated by shared components, joint training objectives, or alignment losses. This page records the source’s claim while noting it is not universally true across all retrieval settings.
 
 ---
 
@@ -106,6 +175,17 @@ Embeddings rarely act alone in production ranking. The source emphasizes:
 
 Cross-references: [[feature-engineering]], [[pagerank]].
 
+### Pre-ranking vs ranking: interaction tradeoffs (new)
+The new source frames an architectural tradeoff:
+
+- **Pre-ranking** favors **fast** models because it scores many candidates.
+  - Two-tower models are common here because they keep query-document interaction minimal (late interaction).
+- **Ranking / re-ranking** can use more expensive **interaction-rich** models because it scores fewer candidates.
+
+This aligns with the broader cascade idea discussed earlier.
+
+Cross-references: [[learning-to-rank]].
+
 ---
 
 ## How embeddings connect to Learning to Rank (LTR)
@@ -119,6 +199,60 @@ The source frames LTR as learning a function \(f(\mathbf{q}, \mathcal{D})\) that
 - enabling multimodal ranking (e.g., combining text and image embeddings).
 
 Cross-reference: [[learning-to-rank]].
+
+---
+
+## Neural ranker architecture spectrum (new)
+
+The new source places two-tower models within a broader set of neural matching/ranking paradigms (query→document, user→item):
+
+- **Two-tower / dual encoder (bi-encoder):**
+  - Representation-based; embeddings computed independently, similarity at output (late interaction).
+  - Strong serving efficiency; supports decoupled indexing of document/item embeddings.
+- **Interaction-focused “matching” models (e.g., DRMM, KNRM):**
+  - Build an interaction matrix over words/phrases and apply CNN/MLP-style modeling.
+  - More interaction than two-tower, typically more expensive.
+- **Cross-encoders (e.g., [[bert]] used as a cross-encoder):**
+  - Jointly encode query and document to model full token-level interactions.
+  - Usually highest accuracy but expensive; typically used in re-ranking.
+- **Late-interaction hybrids (e.g., ColBERT):**
+  - Preserve query-document decoupling while allowing richer matching than a single dot product (token-level late interaction).
+  - Can still support indexing document-side representations for efficient retrieval.
+
+Cross-references: [[bert]], [[learning-to-rank]], [[dense-retrieval]].
+
+---
+
+## Enhancing two-tower embeddings: interaction and regularization extensions (new)
+
+A recurring limitation of vanilla two-tower models is **limited information exchange between towers** (because embeddings are trained largely independently, interacting only at the final similarity computation).
+
+The new source summarizes several extensions aimed at improving quality while maintaining efficiency:
+
+### Dual Augmented Two-Tower (DAT)
+- Augments each tower’s input with additional vectors capturing **historical positive interaction information** from the other tower.
+- Adds a **category alignment loss** to address category imbalance by transferring knowledge from high-data categories to low-data categories.
+- The source notes later research found gains can be **limited**.
+
+### Interaction Enhanced Two Tower (IntTower)
+Designed to improve both **information interaction** and **inference efficiency**, with three main components:
+
+- **Light-SE block (feature recalibration):**
+  - Inspired by Squeeze-and-Excitation Networks (SENet).
+  - Learns feature importance weights to emphasize informative features and suppress less useful ones.
+  - Uses a lightweight single fully-connected layer variant for efficiency.
+- **FE-block (Fine-grained & Early feature interaction):**
+  - Inspired by ColBERT’s “late interaction” ideas.
+  - Performs fine-grained early interactions between multi-layer user representations and the last layer of item representation.
+- **CIR module (Contrastive Interaction Regularization):**
+  - Uses an InfoNCE-style contrastive loss to bring user vectors closer to positive items (and farther from negatives).
+  - Combined with standard supervised loss (e.g., logloss on labels).
+
+Reported results (as described in the source):
+- IntTower outperforms baselines including Logistic Regression, Two-Tower, DAT, and COLD for pre-ranking.
+- It can be comparable to some heavier ranking models (Wide&Deep, DeepFM, DCN, AutoInt) with negligible parameter/training overhead and acceptable latency.
+
+Cross-references: [[contrastive-learning]], [[learning-to-rank]], [[recommender-systems]].
 
 ---
 
@@ -194,7 +328,12 @@ The source mentions embeddings are “usually computed using state-of-the-art co
 - **BERT-like** models for text embeddings
 - **SigLIP** embeddings for vision / visual search
 
-Cross-references: [[bert]], [[contrastive-learning]], [[multimodal-ml]].
+Additional model families/architectures emphasized by the new source (in retrieval + pre-ranking contexts):
+
+- **DSSM-style** two-tower models (dual encoder / bi-encoder) originally developed for mapping queries to relevant documents using clickthrough data.
+- **ColBERT-style** late interaction models (token-level late interaction while still enabling document-side indexing).
+
+Cross-references: [[bert]], [[contrastive-learning]], [[multimodal-ml]], [[dense-retrieval]].
 
 ---
 
@@ -207,7 +346,14 @@ Cross-references: [[bert]], [[contrastive-learning]], [[multimodal-ml]].
 - **Page design affects interaction biases:**
   - The source notes eye-tracking evidence that UI design changes can “flatten” attention distribution across ranks, affecting position bias estimators.
 
-Cross-references: [[position-bias]], [[trust-bias]], [[selection-bias]].
+### Serving tradeoffs in two-tower systems (new)
+- **Decoupling is the core efficiency win:** precompute and index document/item embeddings; compute query/user embedding online.
+- **Freezing embeddings trades freshness vs latency/cost:**
+  - Freezing item embeddings speeds serving but requires a strategy for updates (incremental embedding refresh, periodic full rebuilds, or offline daily retraining + reindex).
+- **Richer interactions usually move later in the cascade:**
+  - Cross-encoders and other interaction-heavy architectures tend to be used in re-ranking due to cost.
+
+Cross-references: [[vector-index]], [[approximate-nearest-neighbors]], [[learning-to-rank]], [[position-bias]], [[trust-bias]], [[selection-bias]].
 
 ---
 
@@ -220,15 +366,13 @@ Cross-references: [[position-bias]], [[trust-bias]], [[selection-bias]].
 - [[bert]] (text embedding model family)
 - [[vector-database]] / [[vector-index]] (storage and serving layer for embeddings)
 - [[counterfactual-learning]] and [[unbiased-learning-to-rank]] (learning from biased click signals)
+- [[dense-retrieval]] (retrieval with dual encoders / embeddings)
+- [[hybrid-retrieval]] (combining lexical and dense methods)
+- [[recommender-systems]] (user-item retrieval and ranking pipelines)
 
 ---
 
 ## Source integration notes
 
 - This page is initialized from a source focused on **Learning to Rank in Web Search**, integrating the parts relevant to embeddings:
-  - vector indexes,
-  - embedding-based retrieval,
-  - ANN scaling considerations,
-  - and how embeddings feed into ranking pipelines.
-- **Potential contradiction/nuance recorded:**
-  - The simplified complexity statements about k-d trees vs. ANN (“\(O(\log n)\)” vs “close to \(O(1)\)”) are directional and practical rather than strict worst-case guarantees.
+  - vector

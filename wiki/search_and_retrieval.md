@@ -2,6 +2,7 @@
 slug: search_and_retrieval
 sources:
 - hav4ik.github.io
+- blog.reachsumit.com
 tags: []
 title: Search and Information Retrieval
 updated: '2026-04-14'
@@ -79,6 +80,22 @@ Common index types mentioned in web search and large-scale retrieval:
   - Stores a large set of engineered signals (potentially thousands), including compressed neural features.
   - Used heavily in later re-ranking stages; feature engineering strongly influences ranker quality.
 
+### Two-tower embedding indexes (industrial pattern)
+A common industrial pattern (especially in large-scale retrieval and *pre-ranking*) is to learn embeddings with a **two-tower / dual-encoder** model, then store (typically) the *document/item* tower embeddings in a vector index for fast similarity search:
+
+- Two separate encoders produce:
+  - a **query/user embedding** \( \mathbf{e}_q \)
+  - a **document/item embedding** \( \mathbf{e}_d \)
+- A similarity score is computed with a cheap function, often **inner product**:
+  - \( s(q,d) = \langle \mathbf{e}_q, \mathbf{e}_d \rangle \)
+
+Operational notes from the new source:
+- The two towers can be computed **independently in parallel** and only interact at the output (“**late interaction**”).
+- The *item/document tower embeddings* are often **frozen after training** and served from an **indexing service** for efficient inference.
+- Some systems may even freeze both towers and retrain offline periodically (e.g., daily) while rebuilding indexes.
+
+(These ideas connect directly to the “Vector index” section and to [[approximate_nearest_neighbors]] for scalable nearest-neighbor retrieval.)
+
 ---
 
 ## Retrieval (candidate generation)
@@ -103,6 +120,26 @@ See: [[approximate_nearest_neighbors]]
 
 ---
 
+## Multi-stage / cascade ranking systems (retrieval → pre-ranking → ranking)
+
+The existing “retrieve top-*k* → rank” pipeline is a simplification. The new source reinforces a widely used **multi-stage (cascade) ranking** architecture:
+
+- Real systems can have **tens of millions** of candidate items/documents.
+- Strict **latency constraints** strongly shape architecture; the source claims:
+  - even ~**100ms** additional response time can measurably degrade user experience and revenue (time- and product-dependent).
+- Because a single complex model cannot score every candidate within latency limits, systems typically adopt stages such as:
+  - **Recall / retrieval**: very fast, recall-oriented
+  - **Pre-ranking**: filters the retrieved set further using fast learned models (often deep but efficient)
+  - **Ranking / re-ranking**: the most expensive models/features applied to the smallest candidate set
+
+In this framing:
+- Earlier stages emphasize **efficiency and recall metrics**.
+- Later stages emphasize **effectiveness** using richer interaction modeling.
+
+See also: [[search_engine_architecture]]
+
+---
+
 ## Ranking and Learning to Rank (LTR)
 
 Ranking is the stage that “makes search work”: candidates are sorted by predicted relevance to the query (and optionally user context/preferences).
@@ -115,6 +152,20 @@ Historical note:
 - As of 2020, PageRank is described as still present but only a small part of Google’s broader system.
 
 See: [[learning_to_rank]]
+
+### Representation-based vs interaction-based neural rankers (where two-tower fits)
+The new source distinguishes *families* of neural ranking/matching models that often map onto different pipeline stages:
+
+- **Two-tower / dual-encoder (bi-encoder)**: *representation-based*
+  - Encodes query and document independently; matches via dot product or similar.
+  - Favored for **retrieval** and **pre-ranking** due to speed and indexability.
+- **Interaction-focused models**: compute richer query–document interactions
+  - Examples mentioned in the source include:
+    - DRMM, KNRM (interaction matrix + neural network)
+    - **Cross-encoders** like [[bert]] that jointly encode query+document and model full token interactions
+    - **ColBERT**-style “late interaction” that keeps query/document encodable but uses finer-grained interaction at scoring time
+
+**Connection to existing page:** this complements the page’s “retrieval vs ranking” split by explaining *why* two-tower models are common upstream: they preserve query/document **decoupling**, enabling vector indexes and fast scoring.
 
 ---
 
@@ -308,72 +359,58 @@ On MSLR-WEB30K (2010-era features), important signals include:
 
 ---
 
+## Neural pre-ranking with two-tower models (industry practice)
+
+The new source argues that two-tower models are widely adopted in industrial-scale retrieval/ranking workflows (search, ads, recommendations), and are a “go-to” approach for **pre-ranking** due to an efficiency/accuracy tradeoff.
+
+### Where pre-ranking sits
+- **Retrieval/recall** may bring candidates from a large pool (potentially millions).
+- **Pre-ranking** further filters candidates using a relatively cheap learned model that can still score many items.
+- **Ranking/re-ranking** uses heavier models on a much smaller set.
+
+### Why two-tower works for pre-ranking
+- **Inference efficiency**
+  - Query and item encoders run independently; scoring is a dot product.
+  - Item embeddings can be precomputed and served from an index.
+- **Production friendliness**
+  - New/updated items can be embedded and added to the embedding index without retraining the encoders (as framed in the source for dual encoders).
+
+### Dual encoders: variants and a reported empirical result
+The source discusses dual-encoder subtypes:
+
+- **Siamese Dual Encoder (SDE)**: two identical subnetworks, often sharing parameters.
+- **Asymmetric Dual Encoder (ADE)**: two separately parameterized encoders.
+
+Reported conclusion (from a 2022 study cited by the source, in QA retrieval):
+- SDEs can outperform ADEs because ADEs may embed inputs into **disjoint embedding spaces**, hurting retrieval quality.
+- ADE performance can be improved by sharing a **projection layer** (ADE-SPL).
+- Sharing or freezing token embedders (ADE-STE, ADE-FTE) offers only marginal improvements (per the source’s summary).
+
+**Note:** This is not a contradiction with existing content; it adds nuance on architectural choices within embedding-based retrieval.
+
+---
+
+## Extensions to two-tower models (addressing “lack of interaction”)
+
+A common limitation of basic two-tower models is limited feature interaction between towers (because they only meet at the last layer). The new source surveys extensions designed to inject interaction while keeping efficiency acceptable:
+
+- **DAT (Dual Augmented Two-Tower Model)**
+  - Augments each tower’s input with a vector capturing historical positive interaction information from the *other* tower.
+  - Adds a category alignment loss to address category imbalance via transfer.
+  - The source notes later work found gains can be limited.
+
+- **IntTower (Interaction Enhanced Two-Tower Model)**
+  - Aims to improve interaction while keeping inference cost close to two-tower.
+  - Adds three components:
+    - **Light-SE block**: lightweight feature recalibration inspired by SENet (channel importance).
+    - **FE-block**: fine-grained and early feature interaction inspired by ColBERT-style late interaction.
+    - **CIR module**: contrastive interaction regularization using **InfoNCE** to pull user–positive items closer; trained alongside a logloss.
+  - The source reports IntTower outperforms several pre-ranking baselines and can be comparable to some heavier ranking models, with negligible parameter/training overhead and acceptable serving latency.
+
+These additions help connect IR “candidate generation + ranking” with modern deep retrieval/pre-ranking design patterns.
+
+---
+
 ## Theoretical notes: does LambdaRank optimize a “real” loss?
 
-The source highlights open questions and partial answers:
-
-- **Convergence / existence of a global loss**
-  - Donmez et al. (2009) empirically test local optimality using a one-sided Monte Carlo test and find evidence of convergence to a local minimum.
-- **Poincaré lemma argument (Burges et al., 2006)**
-  - Suggests conditions under which a global potential function might exist, but due to sorting and recomputation of lambdas across iterations, a global loss across iterations is not straightforwardly established.
-- **LambdaLoss framework (Wang et al., 2019)**
-  - Provides a probabilistic framework where LambdaRank is interpreted as an EM-like procedure optimizing a well-defined negative log-likelihood (or an upper bound thereof), connecting “lambda” gradients to an underlying objective.
-
-See: [[learning_to_rank]]
-
----
-
-## Unbiased Learning to Rank (learning from user behavior)
-
-Human labeling is expensive; a natural alternative is to learn from user interactions (especially clicks). However, click signals are **biased**.
-
-This motivates:
-- **Counterfactual Learning to Rank**
-- **Unbiased Learning to Rank**
-
-See: [[unbiased_learning_to_rank]] and [[counterfactual_learning]]
-
-### Click signal biases
-
-Common biases in implicit feedback:
-
-- **Position bias**
-  - Users examine top-ranked results more; higher ranks receive disproportionate attention and clicks.
-  - Eye-tracking studies illustrate this, and **UI/design changes can change the bias profile**, requiring recalibration of bias estimators.
-- **Selection bias**
-  - Some results have near-zero probability of being examined (e.g., results beyond the first page).
-  - Important distinction: some methods can correct for position bias only if selection bias is not severe.
-- **Trust bias**
-  - Users may trust the system’s ordering and click top results even when not most relevant.
-  - Related to but distinct from position bias (trust is about *belief in ranking quality*, not just examination likelihood).
-
-See: [[click_models]]
-
-### Counterfactual evaluation (core idea)
-
-Goal:
-- Evaluate a new ranker \(f_\theta\) using logs collected under a previously deployed ranker \(f_{\text{deploy}}\) (often called a **behavior policy**).
-
-Terminology:
-- **Behavior policy**: the deployed system that generated the logged rankings.
-- **Evaluation policy**: the new candidate system being evaluated using those logs.
-
-**Important caveat (inherent limitation):**
-- Because logs are biased by the behavior policy and by presentation biases, counterfactual methods require explicit bias modeling/correction to avoid learning or evaluating the wrong thing.
-
----
-
-## Notes on scope and limitations
-
-- The “index → retrieve top-*k* → rank” pipeline is intentionally simplified; production search stacks include multiple retrieval/ranking stages, blending, deduplication, safeguards, policy constraints, and more (see [[search_engine_architecture]]).
-- Many ideas here generalize beyond web search to internal search (e.g., retail, media, social), where “documents” are products, videos, posts, etc.
-
----
-
-## Contradictions and open questions (tracked)
-
-Since this is a new page and only one source has been integrated so far, there are **no direct contradictions with existing page content**.
-
-Open questions / areas likely to require reconciliation as more sources are added:
-- Whether “relevance” should be treated as a single concept combining human labels, CTR, and conversions (as the source describes) versus a multi-objective setup where these are distinct targets.
-- The exact role and prevalence of specific algorithms in current major search engines (claims like “PageRank is still a small part” are time- and source-dependent and may vary by engine and by interpretation).
+The source highlights open

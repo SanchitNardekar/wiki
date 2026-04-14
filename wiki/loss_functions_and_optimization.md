@@ -2,6 +2,7 @@
 slug: loss_functions_and_optimization
 sources:
 - hav4ik.github.io
+- blog.reachsumit.com
 tags: []
 title: Loss Functions and Optimization
 updated: '2026-04-14'
@@ -39,6 +40,21 @@ A modern search system is often described as a pipeline:
   - Rule-based heuristics may be sufficient for smaller systems
 
 Loss functions and optimization methods in this page primarily apply to the **re-ranking** stage, where rich features are available.
+
+### Extension: multi-stage/cascade ranking and where losses change by stage
+
+The new source emphasizes **cascade / multi-stage ranking systems** driven by **latency constraints**, where different stages optimize different objectives:
+
+- Earlier stages (retrieval/recall and **pre-ranking**) prioritize:
+  - **efficiency** (scoring many candidates quickly)
+  - **recall-oriented metrics** (keep good candidates in the top set passed downstream)
+- Later stages (ranking and re-ranking) can afford:
+  - more expensive models (e.g., cross-feature interaction models)
+  - losses aligned with downstream ranking metrics (often [[ndcg]]@k)
+
+This complements (and extends) the earlier “retrieval vs re-ranking” framing: in many industrial stacks there is an explicit **pre-ranking** stage between retrieval and final ranking.
+
+Cross-references: [[information_retrieval]], [[learning_to_rank]].
 
 ---
 
@@ -244,6 +260,90 @@ This underscores a theme: **features matter** greatly, and training a strong ran
 
 ---
 
+## Extension: losses and optimization for Two-Tower / Dual-Encoder pre-ranking
+
+The new source focuses on **two-tower (dual-encoder / bi-encoder)** models as a common choice for **pre-ranking** (and sometimes retrieval) because they separate representation learning and scoring:
+
+- Compute a query/user embedding \(u\) and a document/item embedding \(v\) **independently**
+- Score with a cheap similarity, often **inner product**:
+  - \(s(u,v) = u^\top v\)
+
+This “late interaction”/decoupled design enables:
+- precomputing and indexing document/item embeddings (fast inference)
+- approximate nearest neighbor search over embeddings (fast candidate generation)
+- serving updates by adding/updating item embeddings without retraining the whole model (for some workflows)
+
+Cross-references: [[information_retrieval]], [[learning_to_rank]].
+
+### Two-tower vs. interaction-heavy rankers: implication for objectives
+
+The source contrasts architecture families (in neural matching / retrieval terms):
+
+- **Representation-based**: two-tower / dual encoder (late interaction at the end)
+- **Interaction-based**: DRMM/KNRM-style interaction matrices + neural scorer; **cross-encoders** like BERT
+- **Contextual late interaction**: ColBERT-style token-level interactions while keeping query/document decoupling
+
+**Optimization implication** (high-level):
+- Two-tower models typically optimize a **similarity learning objective** in embedding space (often using negative sampling / contrastive losses), rather than a listwise NDCG surrogate directly.
+- Final re-rankers (GBDT or cross-encoders) more often optimize metric-aligned surrogates (e.g., LambdaRank-style).
+
+Cross-references: [[ndcg]], [[ranking_metrics]].
+
+### Dual encoder variants and a reported empirical finding
+
+The source describes **Siamese Dual Encoder (SDE)** vs **Asymmetric Dual Encoder (ADE)**:
+
+- **SDE (Siamese)**: two towers share parameters (or are identical subnetworks)
+- **ADE (Asymmetric)**: towers have distinct parameters
+
+Reported conclusion (Dong et al., 2022, per source summary):
+- SDEs performed **better** than ADEs on a QA retrieval task, attributed to ADEs embedding inputs into **disjoint embedding spaces** which can hurt retrieval quality.
+- ADE performance can be improved by **sharing a projection layer** (ADE-SPL), making it competitive with (or better than) SDE.
+- Sharing/freezeing token embedders (ADE-STE, ADE-FTE) yields only marginal improvements.
+
+> Note: This is task- and setup-dependent; treat it as an empirical observation reported in the source, not a universal law.
+
+### Interaction-enhanced two-tower models add auxiliary losses (contrastive + logloss)
+
+The source highlights a common limitation of pure two-tower models:
+- **Lack of information interaction between towers** (because embeddings are learned mostly independently)
+
+Proposed extensions introduce additional interaction modules and **additional losses**.
+
+#### IntTower: combining supervised classification loss + contrastive regularization
+
+The source describes an “Interaction Enhanced Two Tower Model (IntTower)” which combines:
+- Feature refinement (Light-SE block inspired by SENet)
+- Early/fine-grained feature interactions (FE-block inspired by ColBERT’s interaction style)
+- **Contrastive Interaction Regularization (CIR)** using **InfoNCE** loss
+
+Training objective (as described at a high level in the source):
+- combine **logloss** (binary cross-entropy on predicted score vs label) **+** an **InfoNCE** contrastive loss that pulls user/query closer to positive items than negatives
+
+Cross-references:
+- [[contrastive_learning]] (for InfoNCE-style losses)
+- [[cross_entropy]] (for “logloss” / BCE)
+- [[information_retrieval]] (for pre-ranking vs ranking)
+
+##### InfoNCE (conceptual form)
+
+While the source does not give a full equation, the commonly used InfoNCE form for an anchor \(u\), positive \(v^+\), and negatives \(\{v_k^-\}\) is:
+
+\[
+\mathcal{L}_{\text{InfoNCE}}(u, v^+) =
+- \log \frac{\exp(\text{sim}(u, v^+)/\tau)}
+{\exp(\text{sim}(u, v^+)/\tau) + \sum_k \exp(\text{sim}(u, v_k^-)/\tau)}
+\]
+
+- \(\text{sim}\) is often dot product or cosine similarity
+- \(\tau\) is a temperature parameter
+
+**How this connects to ranking**:
+- InfoNCE encourages **relative ordering** (positive above negatives) in embedding similarity space, which indirectly improves retrieval/pre-ranking quality.
+- This is conceptually aligned with pairwise ranking (positives vs negatives), but implemented as a multi-negative softmax.
+
+---
+
 ## Theoretical status: is LambdaRank optimizing a “real” loss?
 
 The source describes long-standing theoretical questions:
@@ -306,59 +406,4 @@ P( y_i > y_j \mid s_i, s_j, \pi_i, \pi_j)
 }
 \]
 
-The paper also considers distributions over π induced by noisy scores; the source notes using a **hard assignment** limit (ε → 0) for computational reasons.
-
-**Claim noted in the source:** Wang et al. (2019) prove LambdaRank can be viewed as an EM procedure optimizing this LambdaLoss objective (or an upper bound), and the framework enables designing new metric-driven losses.
-
-Cross-reference: [[expectation_maximization]], [[probabilistic_models]].
-
----
-
-## Unbiased / counterfactual learning-to-rank: when “labels” come from clicks (preview)
-
-Although this page focuses on loss functions and optimization, the source also motivates why optimization objectives change when training data comes from **implicit feedback**:
-
-- Human labeling is expensive and process-heavy (e.g., long evaluation guidelines at major search engines).
-- Clicks are cheaper but biased.
-
-Common click biases mentioned:
-
-- **Position bias**: top-ranked results get examined/clicked more.
-- **Selection bias**: items beyond the first page may have near-zero probability of examination.
-- **Trust bias**: users may click higher-ranked items because they trust the system, not because items are truly more relevant.
-
-These biases matter because naïvely optimizing a click-based loss may reinforce the deployed ranking’s bias. Methods that correct for these are often called **Unbiased Learning to Rank**.
-
-Cross-reference: [[counterfactual_learning_to_rank]], [[propensity_scoring]], [[position_bias]].
-
----
-
-## Notes on contradictions / uncertainty in the new source
-
-Since this wiki page is currently seeded from a single blog-style source, the source itself includes an explicit caveat:
-
-- The author states they are “far from an expert” and that the post “likely contains inaccuracies.”
-
-No direct contradictions with existing page content exist (this was a new page). However, keep in mind a potential tension that commonly appears in the literature and is hinted at here:
-
-- **LambdaRank described as “directly optimizing NDCG”** vs. the later discussion that **the global loss was historically unclear** and later justified via LambdaLoss/EM-like interpretations.
-  - These statements can be reconciled as: LambdaRank produces **gradients aligned with NDCG improvements** (practically effective), while the existence of a single smooth global objective was historically debated and later formalized under frameworks like LambdaLoss.
-
----
-
-## Quick “when to use what” (practical guidance)
-
-- Use **RankNet-style pairwise logistic loss** when:
-  - pairwise preferences are reliable
-  - you want a simple, stable differentiable objective
-- Use **ListNet** when:
-  - you prefer listwise distribution matching and can train with full query groups
-- Use **LambdaMART (LambdaRank + GBDT)** when:
-  - you want a high-performing baseline for web-search-style tabular features
-  - you care about NDCG@k and want strong out-of-the-box performance (e.g., via [[lightgbm]])
-- Consider **LambdaLoss-style objectives** when:
-  - you want a principled probabilistic interpretation and metric-driven loss design
-
-For click-based learning, prefer **counterfactual/unbiased objectives** rather than treating clicks as ground truth labels.
-
----
+The paper also considers distributions over π induced by noisy scores; the source notes using a **hard assignment**
