@@ -7,3 +7,5 @@
 - 2026-04-14 22:32:34 UTC — Ingest: hav4ik.github.io → touched: [embeddings, loss_functions_and_optimization, deep_learning_fundamentals, search_and_retrieval, vector_search, ranking_metrics]
 - 2026-04-14 22:40:04 UTC — Ingest: hav4ik.github.io → touched: [llm_fine_tuning, loss_functions_and_optimization, ranking_metrics, llm_fundamentals, mlops, model_serving, ml_system_design, data_pipelines]
 - 2026-04-14 22:48:22 UTC — Ingest: relevance_filtering_for_embedding_based_retrieval.pdf → touched: [vector_search, embeddings, search_and_retrieval, two_tower_architecture, multi_stage_ranking, ranking_metrics, loss_functions_and_optimization, experiment_design]
+- 2026-04-15 12:06:41 UTC — Ingest: blog.ezyang.com → touched: [deep_learning_fundamentals]
+- 2026-04-15 13:54:20 UTC — Ingest: blog.ezyang.com → touched: [deep_learning_fundamentals, loss_functions_and_optimization, mlops]

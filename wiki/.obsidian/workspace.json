@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "loss_functions_and_optimization.md",
+                "file": "deep_learning_fundamentals.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "loss_functions_and_optimization"
+              "title": "deep_learning_fundamentals"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "loss_functions_and_optimization.md",
+                "file": "deep_learning_fundamentals.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for loss_functions_and_optimization"
+              "title": "Backlinks for deep_learning_fundamentals"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "loss_functions_and_optimization.md",
+                "file": "deep_learning_fundamentals.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from loss_functions_and_optimization"
+              "title": "Outgoing links from deep_learning_fundamentals"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "loss_functions_and_optimization.md",
+                "file": "deep_learning_fundamentals.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of loss_functions_and_optimization"
+              "title": "Outline of deep_learning_fundamentals"
             }
           }
         ]
@@ -185,6 +185,7 @@
   },
   "active": "cf5d8913a4c35923",
   "lastOpenFiles": [
+    "loss_functions_and_optimization.md",
     "learning_to_rank.md",
     "llm_fundamentals.md",
     "data_pipelines.md",

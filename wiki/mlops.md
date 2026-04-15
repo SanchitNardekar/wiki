@@ -2,9 +2,10 @@
 slug: mlops
 sources:
 - hav4ik.github.io
+- blog.ezyang.com
 tags: []
 title: MLOps and ML Infrastructure
-updated: '2026-04-14'
+updated: '2026-04-15'
 ---
 
 # MLOps and ML Infrastructure [[mlops]]
@@ -44,6 +45,18 @@ For LLM/reasoning-model workflows, infra typically includes:
   - Artifact management (checkpoints, merges, configs)
   - Observability (GPU utilization, KL/grad norms, reward stats)
 
+**NEW (from PyTorch internals source): “ML infra” also includes the *library internals and extension surfaces* of the training stack.** In practice, teams doing serious MLOps end up needing at least a working mental model of how their framework:
+- Represents tensors and views (memory layout/strides)
+- Dispatches operators across device/layout/dtype
+- Implements autograd metadata and backward execution
+- Organizes kernel code, code generation, and extension points
+
+This matters because many “infra bugs” in RL/long-context training present as:
+- dtype/device mismatches, unexpected copies, or non-contiguous memory
+- silent performance cliffs (kernel selection/dispatch)
+- backward graph explosions or unexpected retained tensors (autograd)
+- integration complexity when mixing techniques like [[lora]] + [[distributed-training]] + inference engines ([[inference]]) for rollouts
+
 Cross references (create/relate as appropriate):
 - RLHF / RL training: [[rlhf]]
 - Evaluation and metrics: [[evaluation]]
@@ -52,6 +65,8 @@ Cross references (create/relate as appropriate):
 - Model fine-tuning: [[fine-tuning]]
 - Parameter-efficient tuning: [[lora]]
 - Inference/serving: [[inference]]
+- PyTorch / frameworks: [[pytorch]] (if exists), [[frameworks]] (if exists)
+- GPU kernels and operator dispatch: [[kernels]] (if exists)
 
 ---
 
@@ -179,7 +194,7 @@ Infra implications:
 
 ### 3) Do we need KL regularization?
 Notes from source:
-- GRPO uses **forward KL** $D_KL(π_θ || π_ref)$ (vs PPO’s reverse KL in some RLHF setups).
+- GRPO uses **forward KL** $D_{KL}(π_θ || π_{ref})$ (vs PPO’s reverse KL in some RLHF setups).
 - Some experiments reported negligible difference, while DAPO argues to remove KL entirely for long-CoT reasoning because the policy diverges enough that regularization may not help.
 
 Infra implications:
@@ -374,27 +389,4 @@ Infra takeaways:
 
 ---
 
-## Cost engineering and resource planning
-
-Reported cost constraints:
-- DeepScaleR-1.5B run: ~$5,000 for ~10% gain (example cited)
-- Scaling to 7B/14B would be extremely expensive
-- Their final 14B end-to-end (SFT + GRPO) run reportedly cost **< $800**
-
-Infra takeaways:
-- Budget-aware strategy:
-  - invest in **data quality** (SFT) first
-  - apply RL as a targeted second phase
-- Cost tracking should be integrated into the experiment system:
-  - $/step, $/rollout-token, $/improvement point
-
-Related: [[cost-optimization]].
-
----
-
-## Reported results snapshot (for infra-driven evaluation)
-
-### 14B (selected metrics)
-- At 16K token budget:
-  - DeepSeek-R1-Distill-14B: AIME’25 Maj@32 ≈ 0.671
-  - Their “Last GRPO 14B”: AIME’25 Maj@32 ≈
+## Cost

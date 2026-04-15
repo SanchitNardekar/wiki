@@ -3,9 +3,10 @@ slug: deep_learning_fundamentals
 sources:
 - blog.reachsumit.com
 - hav4ik.github.io
+- blog.ezyang.com
 tags: []
 title: Deep Learning Fundamentals
-updated: '2026-04-14'
+updated: '2026-04-15'
 ---
 
 # Deep Learning Fundamentals
@@ -402,24 +403,38 @@ Operationally, this fits the broader retrieval theme:
 
 ---
 
-## Practical takeaways (fundamentals emphasized by the source)
+## Deep learning fundamentals for practitioners: tensors, memory layout, and autograd (new)
 
-- Deep learning in retrieval/ranking is often about **representation learning under latency constraints**.
-- Two-tower models are foundational because they support:
-  - scalable indexing,
-  - decoupled inference,
-  - fast similarity computation.
-- Modern extensions (DAT, IntTower, late-interaction models like ColBERT) attempt to mitigate the classic **lack of interaction** while retaining efficiency.
-- Deep metric learning provides a complementary lens:
-  - many embedding models can be trained with **pair/triplet** losses or **angular-margin softmax** losses to produce more discriminative spaces.
+The new source (ezyang’s “PyTorch internals” overview) adds a *systems-level* view of “deep learning fundamentals”: the performance and correctness of modern deep learning systems depends heavily on how **tensors** are represented in memory, how operators are **dispatched** to kernels, and how **reverse-mode automatic differentiation** (autograd) records metadata to compute gradients.
+
+This section complements the retrieval/ranking focus above by explaining why “tensor basics” matter in production ML workloads (training and serving).
+
+> Related: [[pytorch]], [[autograd]], [[cuda]], [[performance_optimization]]
+
+### Tensor = data + metadata (sizes, dtype, device, strides)
+
+A tensor can be viewed as:
+
+- **Data buffer** (storage)
+- **Metadata**
+  - **sizes/shape**
+  - **dtype** (float, int, quantized types, etc.)
+  - **device** (CPU, CUDA, etc.)
+  - **strides** (how to map logical indices to physical memory)
+  - sometimes an **offset** into storage (for views)
+
+This is consistent with the existing section framing (“data + metadata”), and the new source adds emphasis that **strides** are one of PyTorch’s distinctive features because they enable a broad family of **views**.
+
+> Related: [[tensors]], [[memory_layout]]
+
+#### Strides and address calculation
+
+For an $n$-D tensor with indices $i_0,\dots,i_{n-1}$ and strides $s_0,\dots,s_{n-1}$:
+
+$$
+\text{address}(i_0,\dots,i_{n-1}) = \text{offset} + \sum_{j=0}^{n-1} i_j \cdot s_j
+$$
+
+> Related: [[tensors]], [[memory_layout]]
 
 ---
-
-## Contradictions / tensions to note (updated)
-
-### 1) “InfoNCE-style contrastive loss” vs “move away from contrastive approaches”
-- **Existing page:** IntTower’s CIR module uses an **InfoNCE-style contrastive loss** as a helpful regularizer.
-- **New source:** argues that in *supervised deep metric learning*, the field “moved away” from direct $l_2$-contrastive / triplet-style objectives due to **sampling** and **expansion** issues, favoring **angular-margin** softmax-style objectives (ArcFace/CosFace).
-
-This is not a strict contradiction, but it is a **contextual tension**:
-- In retrieval/pre-ranking, InfoNCE-style objectives can be effective and scalable with

@@ -4,9 +4,10 @@ sources:
 - hav4ik.github.io
 - blog.reachsumit.com
 - relevance_filtering_for_embedding_based_retrieval.pdf
+- blog.ezyang.com
 tags: []
 title: Loss Functions and Optimization
-updated: '2026-04-14'
+updated: '2026-04-15'
 ---
 
 # Loss Functions and Optimization
@@ -395,4 +396,6 @@ $$
 The paper explores several mapping families (baseline plus parameterized shapes):
 
 - Raw: $F(x)=x$
-- Linear: $F(x\mid a,b)=ax
+- Linear: $F(x\mid a,b)=ax$
+
+> Note: the existing page content truncates the Linear mapping (it likely intended $ax+b$).
